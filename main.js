@@ -17,6 +17,10 @@ const {
   SLOT_NAMES,
   SKILL_LABELS,
   MEMORY_TYPES,
+  MEMORY_ZONE_META,
+  STAT_LABELS,
+  RELATIONSHIP_LABELS,
+  RESOURCE_LABELS,
   ARCHETYPES,
   ACTIVITIES,
   DEFAULT_SCHEDULES,
@@ -25,6 +29,7 @@ const {
   STORY_BEATS,
   RANK_THRESHOLDS,
   COPY,
+  UI_TEXT,
 } = window.GAME_DATA;
 
 function createRng(seed = 20260313) {
@@ -53,14 +58,6 @@ function createStoryFlags() {
   });
   return flags;
 }
-
-const MEMORY_ZONE_META = {
-  core: { label: "灵台", color: "#f0c36c" },
-  math: { label: "数术区", color: "#7fc8ff" },
-  sigil: { label: "符法区", color: "#a995ff" },
-  dao: { label: "道法区", color: "#63d3b1" },
-  craft: { label: "炼器区", color: "#ef8f85" },
-};
 
 const MEMORY_HEX_DIRECTIONS = [
   { q: 1, r: 0 },
@@ -201,6 +198,8 @@ function createState() {
       autoplay: false,
       autoplayDelay: 1.05,
       autoplayTimer: 0,
+      storyTrail: [],
+      justAppended: false,
     },
     dayModifier: null,
     currentStory: structuredClone(COPY.initialStory),
@@ -236,7 +235,7 @@ function createState() {
       dragPieceId: null,
       placementsToday: [],
       cursor: { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId },
-      lastSummary: "夜间灵块尚未生成。",
+      lastSummary: COPY.memoryPendingSummary,
     },
     summary: null,
   };
@@ -287,10 +286,11 @@ function defaultScheduleFor(archetypeId) {
 function chooseArchetype(id) {
   state.selectedArchetype = id;
   const picked = getArchetype(id);
+  const chosenCopy = COPY.archetypeChosen(picked.name, picked.summary);
   state.currentStory = {
-    title: "入学测评完成",
-    body: `你决定以“${picked.name}”的方式开始这七天。${picked.summary}`,
-    speaker: "问卷法阵",
+    title: chosenCopy.title,
+    body: chosenCopy.body,
+    speaker: UI_TEXT.speakers.survey,
   };
   syncUi();
 }
@@ -443,6 +443,8 @@ function startDay() {
     autoplay: false,
     autoplayDelay: 1.05,
     autoplayTimer: 0,
+    storyTrail: [],
+    justAppended: false,
   };
   state.dayModifier = buildDayModifier();
 
@@ -451,11 +453,8 @@ function startDay() {
     addLog(modifierLog.title, modifierLog.body);
   }
 
-  state.currentStory = {
-    title: `第 ${state.day} 天开始`,
-    body: COPY.dayFlowOpening(state.day),
-    speaker: "课表法阵",
-  };
+  const dayStart = COPY.dayStart(state.day);
+  pushResolvingStory(dayStart.title, COPY.dayFlowOpening(state.day), dayStart.speaker);
   syncUi();
 }
 
@@ -463,13 +462,34 @@ function getResolvingSlotActivity(slotIndex) {
   return getActivity(state.schedule[slotIndex]) || ACTIVITIES[0];
 }
 
+function pushResolvingStory(title, body, speaker) {
+  state.currentStory = { title, body, speaker };
+  if (state.mode !== "resolving") {
+    return;
+  }
+  const flow = state.resolvingFlow;
+  flow.storyTrail.push({ title, body, speaker });
+  flow.storyTrail = flow.storyTrail.slice(-32);
+  flow.justAppended = true;
+}
+
+function resetResolvingStoryTrail() {
+  if (state.mode !== "resolving") {
+    return;
+  }
+  state.resolvingFlow.storyTrail = [];
+  state.resolvingFlow.justAppended = false;
+}
+
 function showResolvingLead(slotIndex) {
   const activity = getResolvingSlotActivity(slotIndex);
-  state.currentStory = {
-    title: `${SLOT_NAMES[slotIndex]} · 起段`,
-    body: COPY.dayFlowLead(SLOT_NAMES[slotIndex], activity.name),
-    speaker: "课表法阵",
-  };
+  // New schedule slot starts: reset card trail and append from slot opening.
+  resetResolvingStoryTrail();
+  pushResolvingStory(
+    COPY.dayFlowLeadTitle(SLOT_NAMES[slotIndex]),
+    COPY.dayFlowLead(SLOT_NAMES[slotIndex], activity.name),
+    UI_TEXT.speakers.schedule
+  );
 }
 
 function resolveSlotForFlow(slotIndex) {
@@ -477,12 +497,13 @@ function resolveSlotForFlow(slotIndex) {
   const notes = applyActivity(activity, slotIndex);
   pushTimeline(slotIndex, activity, notes);
 
-  const detail = notes?.trim() || COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name);
-  state.currentStory = {
-    title: `${SLOT_NAMES[slotIndex]} · ${activity.name}`,
-    body: detail,
-    speaker: activity.tone === "study" ? "课程系统" : "日程系统",
-  };
+  const detailBase = COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name);
+  const detail = COPY.dayFlowResult(SLOT_NAMES[slotIndex], activity.name, detailBase, notes);
+  pushResolvingStory(
+    detail.title,
+    detail.body,
+    activity.tone === "study" ? UI_TEXT.speakers.course : UI_TEXT.speakers.routine
+  );
   state.resolvingIndex = slotIndex + 1;
   state.progress = state.resolvingIndex / SLOT_NAMES.length;
 }
@@ -512,21 +533,17 @@ function advanceResolvingFlow() {
   if (flow.phase === "result") {
     if (flow.slotIndex >= SLOT_NAMES.length - 1) {
       addLog(COPY.dayEndLog.title, COPY.dayEndLog.body);
-      state.currentStory = {
-        title: COPY.dayEndLog.title,
-        body: COPY.dayEndLog.body,
-        speaker: "课表法阵",
-      };
+      pushResolvingStory(COPY.dayEndLog.title, COPY.dayEndLog.body, UI_TEXT.speakers.schedule);
       flow.phase = "ending";
       syncUi();
       return;
     }
 
-    state.currentStory = {
-      title: `${SLOT_NAMES[flow.slotIndex]} · 收束`,
-      body: COPY.dayFlowOutro(SLOT_NAMES[flow.slotIndex]),
-      speaker: "课表法阵",
-    };
+    pushResolvingStory(
+      COPY.dayFlowOutroTitle(SLOT_NAMES[flow.slotIndex]),
+      COPY.dayFlowOutro(SLOT_NAMES[flow.slotIndex]),
+      UI_TEXT.speakers.schedule
+    );
     flow.phase = "outro";
     syncUi();
     return;
@@ -575,7 +592,7 @@ function consumeDayModifierIfNeeded(activity) {
   }
   applyEffectBundle(state.dayModifier.effect);
   state.dayModifier.used = true;
-  return `状态「${state.dayModifier.title}」生效。`;
+  return COPY.dayModifierApplied(state.dayModifier.title);
 }
 
 function applyActivity(activity, slotIndex) {
@@ -938,7 +955,7 @@ function placeMemoryPiece(target, pieceId = state.memory.selectedPiece) {
   state.memory.dragPieceId = null;
   state.memory.selectedPiece = state.memory.pieces.find((item) => !item.used)?.id || null;
   state.memory.cursor = resolvedTarget;
-  state.memory.lastSummary = `已放置 ${state.memory.placementsToday.length} / ${state.memory.pieces.length} 枚灵块。`;
+  state.memory.lastSummary = UI_TEXT.memory.placedSummary(state.memory.placementsToday.length, state.memory.pieces.length);
   syncUi();
 }
 
@@ -955,27 +972,27 @@ function endNight() {
   placed.forEach((item) => {
     if (item.type === "base") {
       state.resources.insight += 1;
-      summary.push("灵台基座点亮了一处灰域节点。");
+      summary.push(COPY.nightEffects.baseUnlock);
     }
     if (item.type === "ability") {
       const focus = getMainFocusSkill() || "dao";
       state.skills[focus] += 1;
       spiritGain += 1;
-      summary.push(`术式楼将 ${SKILL_LABELS[focus]} 的修行又推进了一重。`);
+      summary.push(COPY.nightEffects.abilityBoost(SKILL_LABELS[focus]));
     }
     if (item.type === "boost") {
       state.stats.fatigue -= 1;
       state.stats.mood += 1;
-      summary.push("养神台安抚心神，化去了一段疲惫。");
+      summary.push(COPY.nightEffects.boostRecover);
     }
     if (item.type === "reasoning") {
       state.stats.intelligence += 1;
       state.stats.inspiration += 1;
-      summary.push("悟理阁让白日疑题在夜里豁然贯通。");
+      summary.push(COPY.nightEffects.reasoningBreakthrough);
     }
     if (item.type === "bridge") {
       state.stats.memory += 1;
-      summary.push("衔接塔在两座建筑之间牵起了知识脉络。");
+      summary.push(COPY.nightEffects.bridgeLink);
     }
   });
 
@@ -996,7 +1013,7 @@ function endNight() {
   });
   if (resonanceBonus > 0) {
     spiritGain += resonanceBonus;
-    summary.push(`术式楼与悟理阁经由衔接塔共鸣 ${resonanceBonus} 次，额外凝成 ${resonanceBonus} 点灵力。`);
+    summary.push(COPY.nightEffects.resonance(resonanceBonus));
   }
 
   state.resources.spirit += spiritGain;
@@ -1110,13 +1127,13 @@ function drawScene() {
 
 function drawMenuScene() {
   drawAcademyBackdrop("#143048", "#0a1625");
-  drawBanner("久安问道录", "策划案压缩成一周可玩的校园修仙养成 demo");
-  drawFloatingCards(["日程编排", "属性成长", "夜间记忆建构", "人物事件"], 118);
+  drawBanner(UI_TEXT.canvas.menuTitle, UI_TEXT.canvas.menuSubtitle);
+  drawFloatingCards(UI_TEXT.canvas.menuCards, 118);
 }
 
 function drawPlanningScene() {
   drawAcademyBackdrop("#173856", "#0d1a28");
-  drawBanner(`第 ${state.day} 天 · 日程编排`, "白天安排课程与活动，夜里把灵块拼进长期记忆。");
+  drawBanner(UI_TEXT.canvas.planningTitle(state.day), UI_TEXT.canvas.planningSubtitle);
   drawTimelineStrip();
   drawStatConstellation();
 }
@@ -1137,7 +1154,7 @@ function drawResolvingScene() {
   };
   const palette = palettes[current.scene] || ["#12283e", "#2f5b78"];
   drawAcademyBackdrop(palette[0], palette[1]);
-  drawBanner(`第 ${state.day} 天 · ${current.name}`, "系统正在逐时段结算。");
+  drawBanner(UI_TEXT.canvas.resolvingTitle(state.day, current.name), UI_TEXT.canvas.resolvingSubtitle);
 
   const centerX = canvas.width * 0.3;
   const centerY = canvas.height * 0.62;
@@ -1159,7 +1176,7 @@ function drawResolvingScene() {
 
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.font = "24px 'Microsoft YaHei'";
-  ctx.fillText(`当前时段：${SLOT_NAMES[Math.min(state.resolvingIndex, 3)]}`, 470, 210);
+  ctx.fillText(UI_TEXT.canvas.resolvingSlot(SLOT_NAMES[Math.min(state.resolvingFlow.slotIndex, 3)]), 470, 210);
   ctx.font = "18px 'Microsoft YaHei'";
   wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
   drawCanvasProgress(470, 330, 340, 16, state.progress);
@@ -1181,7 +1198,7 @@ function drawMemoryScene() {
     ctx.fillRect(x, y, 100, 72);
   }
 
-  drawBanner("夜间记忆建构", "先以灵台基座解锁灰域节点，再于节点建塔，以衔接塔贯通边位。");
+  drawBanner(UI_TEXT.canvas.memoryTitle, UI_TEXT.canvas.memorySubtitle);
 
   const counts = countBoardTypes();
   const x = 140;
@@ -1202,8 +1219,8 @@ function drawMemoryScene() {
 
 function drawSummaryScene() {
   drawAcademyBackdrop("#172036", "#274b6c");
-  drawBanner("第一周结算", "从策划案中抽出的核心循环已经跑完一周。");
-  const rank = state.summary?.rank || "未评级";
+  drawBanner(UI_TEXT.canvas.summaryTitle, UI_TEXT.canvas.summarySubtitle);
+  const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.fillRect(150, 160, 660, 240);
   ctx.strokeStyle = "rgba(240,195,108,0.45)";
@@ -1214,7 +1231,7 @@ function drawSummaryScene() {
   ctx.fillText(rank, 420, 255);
   ctx.fillStyle = "#e8f1ff";
   ctx.font = "22px 'Microsoft YaHei'";
-  ctx.fillText(`最佳方向：${SKILL_LABELS[state.summary.bestSkill[0]]} ${state.summary.bestSkill[1]} 级`, 250, 310);
+  ctx.fillText(UI_TEXT.canvas.summaryBest(SKILL_LABELS[state.summary.bestSkill[0]], state.summary.bestSkill[1]), 250, 310);
   wrapText(state.summary.majorBeat, 250, 350, 460, 30, "#c9d8ea");
 }
 
@@ -1278,17 +1295,17 @@ function drawTimelineStrip() {
     const activity = getActivity(state.schedule[index]);
     ctx.fillStyle = "#b8c9dc";
     ctx.font = "14px 'Microsoft YaHei'";
-    ctx.fillText(activity ? activity.name : "待安排", x + 16, y + 44);
+    ctx.fillText(activity ? activity.name : UI_TEXT.common.unassigned, x + 16, y + 44);
   });
 }
 
 function drawStatConstellation() {
   const points = [
-    { label: "智力", value: state.stats.intelligence, angle: -Math.PI / 2 },
-    { label: "记忆", value: state.stats.memory, angle: -0.22 },
-    { label: "体力", value: state.stats.stamina, angle: 0.82 },
-    { label: "灵感", value: state.stats.inspiration, angle: 2.18 },
-    { label: "心力", value: state.stats.willpower, angle: 3.28 },
+    { label: STAT_LABELS.intelligence, value: state.stats.intelligence, angle: -Math.PI / 2 },
+    { label: STAT_LABELS.memory, value: state.stats.memory, angle: -0.22 },
+    { label: STAT_LABELS.stamina, value: state.stats.stamina, angle: 0.82 },
+    { label: STAT_LABELS.inspiration, value: state.stats.inspiration, angle: 2.18 },
+    { label: STAT_LABELS.willpower, value: state.stats.willpower, angle: 3.28 },
   ];
   const centerX = 760;
   const centerY = 310;
@@ -1403,11 +1420,11 @@ function getCurrentPhaseIndex() {
 }
 
 function getQuickStatusCards() {
-  return [
-    { label: "灵石", value: state.resources.coins, hint: "日常花销与打工收入" },
-    { label: "悟道点", value: state.resources.insight, hint: "课程与课业沉淀" },
-    { label: "灵力值", value: state.resources.spirit, hint: "周结算评级核心" },
-  ];
+  return UI_TEXT.quickCards.map((item) => ({
+    label: RESOURCE_LABELS[item.key],
+    value: state.resources[item.key],
+    hint: item.hint,
+  }));
 }
 
 function renderInfoModal() {
@@ -1419,11 +1436,11 @@ function renderInfoModal() {
   if (kind === "memory-rules") {
     infoModal.innerHTML = `
       <div class="panel-title">
-        <h2>灵块类型</h2>
-        <button class="drawer-close" id="info-close-btn" type="button">关闭</button>
+        <h2>${UI_TEXT.infoModal.memoryTitle}</h2>
+        <button class="drawer-close" id="info-close-btn" type="button">${UI_TEXT.common.close}</button>
       </div>
       <div class="modal-body">
-        <p class="tiny">夜间为六边形长期记忆区。灰域节点需先投放灵台基座解锁，每个节点仅可建一座建筑。</p>
+        <p class="tiny">${UI_TEXT.infoModal.memoryIntro}</p>
         <div class="modal-grid">
           ${Object.entries(MEMORY_TYPES)
             .map(
@@ -1437,8 +1454,8 @@ function renderInfoModal() {
             .join("")}
         </div>
         <div class="modal-rule">
-          <strong>放置规则</strong>
-          <small>灵台基座只能用于解锁灰域节点。术式楼、养神台、悟理阁只能建在已解锁且空置的节点。衔接塔属于边位建筑，仅可架设在两端节点都已有建筑的相邻边上。</small>
+          <strong>${UI_TEXT.infoModal.memoryRulesTitle}</strong>
+          <small>${UI_TEXT.infoModal.memoryRulesBody}</small>
         </div>
       </div>
     `;
@@ -1448,8 +1465,8 @@ function renderInfoModal() {
   if (kind === "progress") {
     infoModal.innerHTML = `
       <div class="panel-title">
-        <h2>日程进度</h2>
-        <button class="drawer-close" id="info-close-btn" type="button">关闭</button>
+        <h2>${UI_TEXT.infoModal.progressTitle}</h2>
+        <button class="drawer-close" id="info-close-btn" type="button">${UI_TEXT.common.close}</button>
       </div>
       ${flowPanel.innerHTML}
     `;
@@ -1459,8 +1476,8 @@ function renderInfoModal() {
   if (kind === "feedback") {
     infoModal.innerHTML = `
       <div class="panel-title">
-        <h2>最近反馈</h2>
-        <button class="drawer-close" id="info-close-btn" type="button">关闭</button>
+        <h2>${UI_TEXT.infoModal.feedbackTitle}</h2>
+        <button class="drawer-close" id="info-close-btn" type="button">${UI_TEXT.common.close}</button>
       </div>
       ${logPanel.innerHTML}
     `;
@@ -1479,20 +1496,22 @@ function syncUi() {
   topPanel.classList.toggle("hidden", !state.ui.statsOpen);
   infoModal.classList.toggle("hidden", !state.ui.infoModal);
   overlayBackdrop.classList.toggle("hidden", !state.ui.statsOpen && !state.ui.infoModal);
-  statsToggleBtn.textContent = state.ui.statsOpen ? "收起状态" : "角色状态";
+  statsToggleBtn.textContent = state.ui.statsOpen ? UI_TEXT.toolbar.statsClose : UI_TEXT.toolbar.statsOpen;
+  progressToggleBtn.textContent = UI_TEXT.toolbar.progress;
+  feedbackToggleBtn.textContent = UI_TEXT.toolbar.feedback;
   document.body.classList.toggle("memory-mode", state.mode === "memory");
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =
     state.mode === "planning"
-      ? `第 ${state.day} 天待安排，当前选中 ${SLOT_NAMES[state.selectedSlot]}`
+      ? UI_TEXT.statusLine.planning(state.day, SLOT_NAMES[state.selectedSlot])
       : state.mode === "resolving"
-        ? `第 ${state.day} 天剧情推进中：${Math.round(state.progress * 100)}%${state.resolvingFlow.autoplay ? "（自动）" : "（点击）"}`
+        ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
         : state.mode === "memory"
-          ? `第 ${state.day} 夜正在建构记忆`
+          ? UI_TEXT.statusLine.memory(state.day)
           : state.mode === "summary"
-            ? "第一周结算完成"
-            : "选择入学测评原型后开始";
+            ? UI_TEXT.statusLine.summary
+            : UI_TEXT.statusLine.menu;
 }
 
 function renderFlowPanel() {
@@ -1503,8 +1522,8 @@ function renderFlowPanel() {
   flowPanel.innerHTML = `
     <div class="flow-shell">
       <div class="panel-title">
-        <h2>当前进展</h2>
-        <span class="badge">第 ${state.day} / ${state.totalDays} 天</span>
+        <h2>${UI_TEXT.flow.title}</h2>
+        <span class="badge">${UI_TEXT.common.dayBadge(state.day, state.totalDays)}</span>
       </div>
       <div class="phase-strip">
         ${SLOT_NAMES.map((slot, index) => {
@@ -1530,7 +1549,7 @@ function renderFlowPanel() {
           return `
             <div class="phase-card ${stateClass}">
               <strong>${slot}</strong>
-              <small>${activity ? activity.name : "待安排"}</small>
+              <small>${activity ? activity.name : UI_TEXT.common.unassigned}</small>
             </div>
           `;
         }).join("")}
@@ -1564,21 +1583,21 @@ function renderFlowPanel() {
           </div>
         </div>
         <div class="hint-card">
-          <strong>现在要做什么</strong>
+          <strong>${UI_TEXT.flow.nowWhatTitle}</strong>
           <small>${
             state.mode === "menu"
-              ? "先选入学原型，然后开始第一周。"
+              ? UI_TEXT.flow.menuHint
               : state.mode === "planning"
-                ? `先选中一个时段，再给它安排活动。当前聚焦：${currentActivity ? currentActivity.name : "待安排"}。`
+                ? UI_TEXT.flow.planningHint(currentActivity ? currentActivity.name : null)
                 : state.mode === "resolving"
                   ? state.resolvingFlow.autoplay
-                    ? "剧情正在自动播放，你也可以随时手动点击推进。"
-                    : "点击右侧剧情卡片或按钮，逐段推进白天流程。"
+                    ? UI_TEXT.flow.resolvingHintAuto
+                    : UI_TEXT.flow.resolvingHintClick
                   : state.mode === "memory"
-                    ? "从待放置灵块里挑一块，落到满足规则的位置。"
-                    : "查看本周结果，决定是否重新开始。"
+                    ? UI_TEXT.flow.memoryHint
+                    : UI_TEXT.flow.summaryHint
           }</small>
-          <small>快捷键：1-4 选时段，空格填入活动；白天推进阶段按空格/Enter前进，P切自动播放；F 全屏。</small>
+          <small>${UI_TEXT.flow.hotkeys}</small>
         </div>
       </div>
       <div class="quick-grid">
@@ -1591,8 +1610,12 @@ function renderFlowPanel() {
         `).join("")}
       </div>
       <div class="selection-summary">
-        <p class="tiny">最近反馈：${latestTimeline ? `第 ${latestTimeline.day} 天 ${latestTimeline.slot} · ${latestTimeline.activity}` : "还没有进行日程结算。"}</p>
-        <p class="tiny">${latestTimeline ? latestTimeline.notes : "当前阶段的提示会显示在这里，帮助你注意到日程推进。"}</p>
+        <p class="tiny">${
+          latestTimeline
+            ? UI_TEXT.flow.feedbackPrefix(latestTimeline.day, latestTimeline.slot, latestTimeline.activity)
+            : UI_TEXT.flow.feedbackEmptyPrefix
+        }</p>
+        <p class="tiny">${latestTimeline ? latestTimeline.notes : UI_TEXT.flow.feedbackEmptyBody}</p>
       </div>
     </div>
   `;
@@ -1604,26 +1627,37 @@ function renderPlanningPanel() {
     const flow = state.resolvingFlow;
     const currentIndex = Math.min(flow.slotIndex, 3);
     const currentActivity = getResolvingSlotActivity(currentIndex);
-    const nextLabel = flow.phase === "ending" ? "进入夜间构筑" : "点击推进剧情";
-    const autoLabel = flow.autoplay ? "自动播放：开" : "自动播放：关";
+    const nextLabel = flow.phase === "ending" ? UI_TEXT.planning.resolveFinish : UI_TEXT.planning.resolveNext;
+    const autoLabel = flow.autoplay ? UI_TEXT.planning.resolveAutoOn : UI_TEXT.planning.resolveAutoOff;
+    const storyTrailHtml = flow.storyTrail
+      .map(
+        (item) => `
+          <div class="resolve-story-line">
+            <strong>${item.title}</strong>
+            <small>${item.body}</small>
+          </div>
+        `
+      )
+      .join("");
     mainPanel.innerHTML = `
-      <div class="panel-title">
-        <h2>白天剧情推进</h2>
-        <span class="badge">${SLOT_NAMES[currentIndex]}</span>
-      </div>
-      <div class="story-card focus-callout" id="resolve-story-card" role="button" tabindex="0">
-        <strong>${state.currentStory.title}</strong>
-        <small>${state.currentStory.body}</small>
-        <small>当前时段：${currentActivity.name}</small>
-      </div>
-      <div class="progress-bar"><i style="width:${Math.max(6, state.progress * 100)}%"></i></div>
-      <div class="selection-summary">
-        <p class="tiny">点击剧情卡片或按钮推进下一段。</p>
-        <p class="tiny">自动播放开启后将按节奏自动推进。当前进度 ${Math.round(state.progress * 100)}%。</p>
-      </div>
-      <div class="action-row">
-        <button class="primary" id="resolve-next-btn">${nextLabel}</button>
-        <button class="ghost-button ${flow.autoplay ? "primary" : ""}" id="resolve-auto-btn">${autoLabel}</button>
+      <div class="resolving-shell">
+        <div class="panel-title">
+          <h2>${UI_TEXT.planning.resolveTitle}</h2>
+          <span class="badge">${SLOT_NAMES[currentIndex]}</span>
+        </div>
+        <div class="story-card focus-callout" id="resolve-story-card" role="button" tabindex="0">
+          <div class="resolve-story-trail">${storyTrailHtml}</div>
+          <small>${UI_TEXT.planning.resolveCurrentActivity(currentActivity.name)}</small>
+        </div>
+        <div class="progress-bar"><i style="width:${Math.max(6, state.progress * 100)}%"></i></div>
+        <div class="selection-summary">
+          <p class="tiny">${UI_TEXT.planning.resolveTip1}</p>
+          <p class="tiny">${UI_TEXT.planning.resolveTip2(Math.round(state.progress * 100))}</p>
+        </div>
+        <div class="action-row">
+          <button class="primary" id="resolve-next-btn">${nextLabel}</button>
+          <button class="ghost-button ${flow.autoplay ? "primary" : ""}" id="resolve-auto-btn">${autoLabel}</button>
+        </div>
       </div>
     `;
     const advance = () => advanceResolvingFlow();
@@ -1637,6 +1671,10 @@ function renderPlanningPanel() {
         advance();
       }
     });
+    if (flow.justAppended) {
+      storyCard.scrollTop = storyCard.scrollHeight;
+      flow.justAppended = false;
+    }
     return;
   }
 
@@ -1645,24 +1683,24 @@ function renderPlanningPanel() {
   mainPanel.innerHTML = `
     <div class="planning-shell">
       <div class="panel-title">
-        <h2>可选事件</h2>
+        <h2>${UI_TEXT.planning.eventTitle}</h2>
         <span class="badge">${SLOT_NAMES[state.selectedSlot]}</span>
       </div>
       <div class="story-card focus-callout">
         <strong>${SLOT_NAMES[state.selectedSlot]}</strong>
-        <small>左栏负责选时段，右栏只显示当前时段可用的事件与操作。</small>
-        <small>${selectedSlotActivity ? `已安排：${selectedSlotActivity.name}` : "这个时段还没有安排事件。"}</small>
+        <small>${UI_TEXT.planning.eventHelp}</small>
+        <small>${UI_TEXT.planning.eventPicked(selectedSlotActivity?.name || null)}</small>
       </div>
       <div class="planning-meta-grid">
         <div class="story-card">
-          <strong>当前准备填入</strong>
+          <strong>${UI_TEXT.planning.preparingTitle}</strong>
           <small>${activeActivity.name}</small>
           <small>${activeActivity.summary}</small>
         </div>
         <div class="story-card">
-          <strong>今日排表</strong>
-          <small>已填写 ${filledSlots} / 4 个时段。</small>
-          <small>${filledSlots === 4 ? "四个时段已满，可以直接执行当天。" : "先把四个时段全部填满再执行。"}</small>
+          <strong>${UI_TEXT.planning.scheduleTitle}</strong>
+          <small>${UI_TEXT.planning.scheduleFilled(filledSlots)}</small>
+          <small>${UI_TEXT.planning.scheduleHint(filledSlots)}</small>
         </div>
       </div>
       <div class="planning-event-list">
@@ -1681,8 +1719,8 @@ function renderPlanningPanel() {
         ${SCHEDULE_PRESETS.map(
           (preset) => `<button class="ghost-button" data-preset="${preset.id}">${preset.label}</button>`
         ).join("")}
-        <button class="ghost-button warn" id="clear-btn">清空日程</button>
-        <button class="primary" id="execute-btn">执行当天</button>
+        <button class="ghost-button warn" id="clear-btn">${UI_TEXT.planning.clear}</button>
+        <button class="primary" id="execute-btn">${UI_TEXT.planning.execute}</button>
       </div>
     </div>
   `;
@@ -1761,9 +1799,9 @@ function renderMemoryStage() {
           data-memory-edge="${edge.index}"
           style="left:${edge.mx}%;top:${edge.my}%;"
           type="button"
-          aria-label="记忆边位 ${edge.index + 1}"
+          aria-label="${UI_TEXT.memory.edgeAria(edge.index)}"
         >
-          ${occupied ? "衔" : valid ? "可" : "边"}
+          ${occupied ? UI_TEXT.memory.edgeHintOccupied : valid ? UI_TEXT.memory.edgeHintValid : UI_TEXT.memory.edgeHintDefault}
         </button>
       `;
     })
@@ -1778,15 +1816,15 @@ function renderMemoryStage() {
         : false;
       const active = cursor.kind === "node" && cursor.id === node.index;
       const title = !nodeState.unlocked
-        ? "灰域节点"
+        ? UI_TEXT.memory.nodeLockedTitle
         : structureType
           ? MEMORY_TYPES[structureType].label
-          : "已解锁空位";
+          : UI_TEXT.memory.nodeUnlockedTitle;
       const desc = !nodeState.unlocked
-        ? "投放灵台基座可解锁"
+        ? UI_TEXT.memory.nodeLockedDesc
         : structureType
-          ? `第 ${nodeState.day} 天建成`
-          : "可建一座建筑";
+          ? UI_TEXT.memory.nodeBuiltDesc(nodeState.day)
+          : UI_TEXT.memory.nodeEmptyDesc;
       return `
         <button
           class="memory-node zone-${node.zone} ${nodeState.unlocked ? "unlocked" : "locked"} ${structureType ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
@@ -1795,7 +1833,7 @@ function renderMemoryStage() {
           data-type="${structureType || ""}"
           style="left:${node.ux}%;top:${node.uy}%;"
           type="button"
-          aria-label="记忆节点 ${node.index + 1}"
+          aria-label="${UI_TEXT.memory.nodeAria(node.index)}"
         >
           <span class="memory-node-zone">${MEMORY_ZONE_META[node.zone].label}</span>
           <strong>${title}</strong>
@@ -1809,10 +1847,10 @@ function renderMemoryStage() {
     <div class="memory-stage-shell">
       <div class="memory-stage-header">
         <div>
-          <h2>长期记忆区</h2>
-          <p>六边形节点按数术、符法、道法、炼器分区。灰域节点需先投放灵台基座解锁，每个节点只可建一座建筑，衔接塔架设在节点之间的边位。</p>
+          <h2>${UI_TEXT.memory.stageTitle}</h2>
+          <p>${UI_TEXT.memory.stageDesc}</p>
         </div>
-        <span class="badge">${activePiece ? `当前灵块：${MEMORY_TYPES[activePiece.type].label}` : "右栏选择一枚灵块"}</span>
+        <span class="badge">${activePiece ? UI_TEXT.memory.stageCurrentPiece(MEMORY_TYPES[activePiece.type].label) : UI_TEXT.memory.stageSelectHint}</span>
       </div>
       <div class="memory-zone-legend">
         ${zoneLegend}
@@ -1881,52 +1919,52 @@ function renderTopPanel() {
   const picked = getArchetype(state.selectedArchetype);
   topPanel.innerHTML = `
     <div class="panel-title">
-      <h2>角色状态</h2>
+      <h2>${UI_TEXT.top.title}</h2>
       <div class="toolbar-actions">
-        <span class="badge">第 ${state.day} / ${state.totalDays} 天</span>
-        <button class="drawer-close" id="stats-close-btn" type="button">关闭</button>
+        <span class="badge">${UI_TEXT.common.dayBadge(state.day, state.totalDays)}</span>
+        <button class="drawer-close" id="stats-close-btn" type="button">${UI_TEXT.common.close}</button>
       </div>
     </div>
     <p class="hero-line">${picked.name} · ${picked.title}</p>
     <div class="meta-grid">
-      <div class="meta-card"><strong>${state.resources.coins}</strong><span>灵石</span></div>
-      <div class="meta-card"><strong>${state.resources.insight}</strong><span>悟道点</span></div>
-      <div class="meta-card"><strong>${state.resources.spirit}</strong><span>灵力值</span></div>
+      <div class="meta-card"><strong>${state.resources.coins}</strong><span>${RESOURCE_LABELS.coins}</span></div>
+      <div class="meta-card"><strong>${state.resources.insight}</strong><span>${RESOURCE_LABELS.insight}</span></div>
+      <div class="meta-card"><strong>${state.resources.spirit}</strong><span>${RESOURCE_LABELS.spirit}</span></div>
     </div>
     <div class="panel-title" style="margin-top:16px;">
-      <h3>核心属性</h3>
+      <h3>${UI_TEXT.top.coreStatsTitle}</h3>
       <span class="badge">${state.currentStory.speaker}</span>
     </div>
     <div class="stats-grid">
-      ${metric("智力", state.stats.intelligence)}
-      ${metric("记忆", state.stats.memory)}
-      ${metric("体力", state.stats.stamina)}
-      ${metric("灵感", state.stats.inspiration)}
-      ${metric("心力", state.stats.willpower)}
-      ${metric("灵力", state.stats.aura)}
+      ${metric(STAT_LABELS.intelligence, state.stats.intelligence)}
+      ${metric(STAT_LABELS.memory, state.stats.memory)}
+      ${metric(STAT_LABELS.stamina, state.stats.stamina)}
+      ${metric(STAT_LABELS.inspiration, state.stats.inspiration)}
+      ${metric(STAT_LABELS.willpower, state.stats.willpower)}
+      ${metric(STAT_LABELS.aura, state.stats.aura)}
     </div>
     <div class="panel-title" style="margin-top:16px;">
-      <h3>外在状态</h3>
+      <h3>${UI_TEXT.top.externalStatsTitle}</h3>
     </div>
     <div class="stats-grid">
-      ${metric("魅力", state.stats.charisma)}
-      ${metric("整洁", state.stats.cleanliness)}
-      ${metric("情绪", state.stats.mood)}
-      ${metric("疲惫", state.stats.fatigue)}
-      ${metric("自控", state.stats.selfControl)}
-      ${metric("舍友缘", state.relationships.roommate)}
+      ${metric(STAT_LABELS.charisma, state.stats.charisma)}
+      ${metric(STAT_LABELS.cleanliness, state.stats.cleanliness)}
+      ${metric(STAT_LABELS.mood, state.stats.mood)}
+      ${metric(STAT_LABELS.fatigue, state.stats.fatigue)}
+      ${metric(STAT_LABELS.selfControl, state.stats.selfControl)}
+      ${metric(RELATIONSHIP_LABELS.roommate, state.relationships.roommate)}
     </div>
     <div class="panel-title" style="margin-top:16px;">
-      <h3>关系与技能</h3>
+      <h3>${UI_TEXT.top.relationSkillTitle}</h3>
     </div>
     <div class="stats-grid">
-      ${metric("朋友", state.relationships.friend)}
-      ${metric("导师", state.relationships.mentor)}
-      ${metric("辅导员", state.relationships.counselor)}
-      ${metric("数术", state.skills.math)}
-      ${metric("符法", state.skills.sigil)}
-      ${metric("道法", state.skills.dao)}
-      ${metric("炼器", state.skills.craft)}
+      ${metric(RELATIONSHIP_LABELS.friend, state.relationships.friend)}
+      ${metric(RELATIONSHIP_LABELS.mentor, state.relationships.mentor)}
+      ${metric(RELATIONSHIP_LABELS.counselor, state.relationships.counselor)}
+      ${metric(SKILL_LABELS.math, state.skills.math)}
+      ${metric(SKILL_LABELS.sigil, state.skills.sigil)}
+      ${metric(SKILL_LABELS.dao, state.skills.dao)}
+      ${metric(SKILL_LABELS.craft, state.skills.craft)}
     </div>
   `;
   topPanel.querySelector("#stats-close-btn").addEventListener("click", () => toggleStatsPanel(false));
@@ -1935,8 +1973,8 @@ function renderTopPanel() {
 function renderMenuPanel() {
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>开始之前</h2>
-      <span class="badge">选择入学原型</span>
+      <h2>${UI_TEXT.menu.title}</h2>
+      <span class="badge">${UI_TEXT.menu.badge}</span>
     </div>
     <div class="choice-grid">
       ${ARCHETYPES.map(
@@ -1950,7 +1988,7 @@ function renderMenuPanel() {
       ).join("")}
     </div>
     <div class="action-row">
-      <button class="primary" id="start-btn">开始第一周</button>
+      <button class="primary" id="start-btn">${UI_TEXT.menu.startBtn}</button>
     </div>
   `;
   mainPanel.querySelectorAll("[data-archetype]").forEach((button) => {
@@ -1981,13 +2019,13 @@ function renderMemoryPanel() {
     .join("");
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>待放置灵块</h2>
+      <h2>${UI_TEXT.memory.panelTitle}</h2>
       <span class="badge">${state.memory.lastSummary}</span>
     </div>
     <div class="selection-summary">
-      <p class="tiny">步骤 1：从下方托盘抓取灵块。</p>
-      <p class="tiny">步骤 2：拖到左侧六边节点或节点间边位。</p>
-      <p class="tiny">步骤 3：至少放一块，再结束夜晚。</p>
+      <p class="tiny">${UI_TEXT.memory.steps[0]}</p>
+      <p class="tiny">${UI_TEXT.memory.steps[1]}</p>
+      <p class="tiny">${UI_TEXT.memory.steps[2]}</p>
     </div>
     <div class="tower-grid">
       ${Object.entries(MEMORY_TYPES)
@@ -2003,12 +2041,12 @@ function renderMemoryPanel() {
     </div>
     <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
     <div class="story-card" style="margin-top:16px;">
-      <strong>当前规则提示</strong>
-      <small>灰域节点需先用灵台基座解锁；每个节点只能建一座建筑；术式楼/养神台/悟理阁仅可放在已解锁空节点；衔接塔属于边位建筑。</small>
-      <small>节点需先解锁再建造，衔接塔请点击两节点之间的边位。</small>
+      <strong>${UI_TEXT.memory.tipsTitle}</strong>
+      <small>${UI_TEXT.memory.tips[0]}</small>
+      <small>${UI_TEXT.memory.tips[1]}</small>
     </div>
     <div class="action-row">
-      <button class="primary" id="end-night-btn">结束夜晚</button>
+      <button class="primary" id="end-night-btn">${UI_TEXT.memory.endBtn}</button>
     </div>
   `;
   mainPanel.querySelectorAll("[data-piece]").forEach((button) => {
@@ -2026,11 +2064,11 @@ function renderMemoryPanel() {
 }
 
 function renderSummaryPanel() {
-  const rank = state.summary?.rank || "未评级";
+  const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   const bestSkill = state.summary?.bestSkill || ["dao", 0];
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>本周结算</h2>
+      <h2>${UI_TEXT.summary.panelTitle}</h2>
       <span class="badge">${rank}</span>
     </div>
     <div class="story-card focus-callout">
@@ -2038,13 +2076,13 @@ function renderSummaryPanel() {
       <small>${state.currentStory.body}</small>
     </div>
     <div class="summary-grid" style="margin-top:16px;">
-      ${metric("灵石结余", state.resources.coins)}
-      ${metric("悟道点", state.resources.insight)}
-      ${metric("灵力值", state.resources.spirit)}
-      ${metric("最佳技能", `${SKILL_LABELS[bestSkill[0]]} ${bestSkill[1]}`)}
+      ${metric(UI_TEXT.summary.resourceBalance(RESOURCE_LABELS.coins), state.resources.coins)}
+      ${metric(RESOURCE_LABELS.insight, state.resources.insight)}
+      ${metric(RESOURCE_LABELS.spirit, state.resources.spirit)}
+      ${metric(UI_TEXT.summary.bestSkill, `${SKILL_LABELS[bestSkill[0]]} ${bestSkill[1]}`)}
     </div>
     <div class="action-row">
-      <button class="primary" id="restart-btn">重新开始</button>
+      <button class="primary" id="restart-btn">${UI_TEXT.summary.restartBtn}</button>
     </div>
   `;
   mainPanel.querySelector("#restart-btn").addEventListener("click", restartGame);
@@ -2055,33 +2093,33 @@ function renderLogPanel() {
   const recentTimeline = state.timeline.slice(0, 3);
   logPanel.innerHTML = `
     <div class="panel-title">
-      <h2>最近反馈</h2>
-      <span class="badge">${state.mode === "resolving" ? "请留意这里" : "摘要"}</span>
+      <h2>${UI_TEXT.log.title}</h2>
+      <span class="badge">${state.mode === "resolving" ? UI_TEXT.log.badgeResolving : UI_TEXT.log.badgeDefault}</span>
     </div>
     <div class="feedback-list">
       ${recentTimeline
         .map(
           (item) => `
             <div class="story-card">
-              <strong>第 ${item.day} 天 · ${item.slot}</strong>
+              <strong>${UI_TEXT.log.timelineTitle(item.day, item.slot)}</strong>
               <small>${item.activity}</small>
               <small>${item.notes}</small>
             </div>
           `
         )
         .join("")}
-      ${!recentTimeline.length ? `<p class="tiny">开始执行日程后，这里会用更醒目的方式回放刚刚发生的事。</p>` : ""}
+      ${!recentTimeline.length ? `<p class="tiny">${UI_TEXT.log.emptyTimeline}</p>` : ""}
     </div>
     <div class="panel-title" style="margin-top:16px;">
-      <h3>系统记录</h3>
-      <span class="badge">最新 4 条</span>
+      <h3>${UI_TEXT.log.systemTitle}</h3>
+      <span class="badge">${UI_TEXT.log.latest4}</span>
     </div>
     <div class="feedback-list">
       ${recentLogs
         .map(
           (entry) => `
             <div class="log-entry">
-              <strong>${entry.day > 0 ? `第 ${entry.day} 天 · ` : ""}${entry.title}</strong>
+              <strong>${UI_TEXT.log.entryTitle(entry.day, entry.title)}</strong>
               <small>${entry.body}</small>
             </div>
           `
@@ -2110,25 +2148,25 @@ function renderMemoryPanelCompact() {
     .join("");
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>待放置灵块</h2>
+      <h2>${UI_TEXT.memory.panelTitle}</h2>
       <span class="badge">${state.memory.lastSummary}</span>
     </div>
     <div class="selection-summary">
-      <p class="tiny">步骤 1：抓起一枚灵块。</p>
-      <p class="tiny">步骤 2：拖到左侧六边节点或边位。</p>
-      <p class="tiny">步骤 3：至少放一块，再结束夜晚。</p>
+      <p class="tiny">${UI_TEXT.memory.steps[0]}</p>
+      <p class="tiny">${UI_TEXT.memory.steps[1]}</p>
+      <p class="tiny">${UI_TEXT.memory.steps[2]}</p>
     </div>
     <div class="action-row">
-      <button class="ghost-button" id="memory-help-btn">查看灵块类型</button>
+      <button class="ghost-button" id="memory-help-btn">${UI_TEXT.memory.helpBtn}</button>
     </div>
     <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
     <div class="story-card" style="margin-top:16px;">
-      <strong>当前放置提示</strong>
-      <small>右栏现在只保留灵块托盘和操作按钮。块类型与规则说明已移到浮窗。</small>
-      <small>节点需先解锁再建造，衔接塔请点击两节点之间的边位。</small>
+      <strong>${UI_TEXT.memory.tipsTitle}</strong>
+      <small>${UI_TEXT.memory.tips[0]}</small>
+      <small>${UI_TEXT.memory.tips[1]}</small>
     </div>
     <div class="action-row">
-      <button class="primary" id="end-night-btn">结束夜晚</button>
+      <button class="primary" id="end-night-btn">${UI_TEXT.memory.endBtn}</button>
     </div>
   `;
   mainPanel.querySelector("#memory-help-btn").addEventListener("click", () => openInfoModal("memory-rules"));
@@ -2155,8 +2193,8 @@ function renderLeftPanel() {
     const currentSlotActivity = getActivity(state.schedule[resolvingSlotIndex]);
     leftPanel.innerHTML = `
       <div class="panel-title">
-        <h2>今日时段</h2>
-        <span class="badge">第 ${state.day} / ${state.totalDays} 天</span>
+        <h2>${UI_TEXT.left.scheduleTitle}</h2>
+        <span class="badge">${UI_TEXT.common.dayBadge(state.day, state.totalDays)}</span>
       </div>
       <div class="left-slot-grid">
         ${SLOT_NAMES.map((slot, index) => {
@@ -2180,33 +2218,35 @@ function renderLeftPanel() {
           return `
             <button class="left-slot-card ${cls}" data-left-slot="${index}" ${state.mode === "resolving" ? "disabled" : ""}>
               <strong>${slot}</strong>
-              <small>${activity ? activity.name : "未安排"}</small>
+              <small>${activity ? activity.name : UI_TEXT.common.unassigned}</small>
             </button>
           `;
         }).join("")}
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
-          <strong>${state.mode === "resolving" ? "剧情推进中" : "当前步骤"}</strong>
+          <strong>${state.mode === "resolving" ? UI_TEXT.left.stepTitleResolving : UI_TEXT.left.stepTitlePlanning}</strong>
           <small>${
             state.mode === "resolving"
-              ? `当前来到 ${currentSlotName}，进度 ${Math.round(state.progress * 100)}%。`
-              : `先在左侧选择时段，再在右侧选择事件。当前时段：${currentSlotName}。`
+              ? UI_TEXT.left.resolvingStep(currentSlotName, Math.round(state.progress * 100))
+              : UI_TEXT.left.planningStep(currentSlotName)
           }</small>
           <small>${
             state.mode === "resolving"
               ? state.resolvingFlow.autoplay
-                ? "自动播放已开启，可随时手动点击插入推进。"
-                : "点击右侧剧情卡片或“点击推进剧情”按钮进入下一段。"
-              : currentSlotActivity
-                ? `已安排：${currentSlotActivity.name}`
-                : `${currentSlotName} 还没有安排事件。`
+                ? UI_TEXT.left.resolvingStepHintAuto
+                : UI_TEXT.left.resolvingStepHintClick
+              : UI_TEXT.left.planningStepHint(currentSlotActivity?.name || null, currentSlotName)
           }</small>
         </div>
         <div class="left-info-card">
-          <strong>${state.mode === "resolving" ? "今日进度" : "日程完成度"}</strong>
-          <small>${state.mode === "resolving" ? `已完成 ${Math.min(state.resolvingIndex, 4)} / 4 个时段。` : `已安排 ${filledSlots} / 4 个时段。`}</small>
-          <small>${state.mode === "resolving" ? "需要看角色状态、进度或最近反馈时，使用顶部按钮打开浮窗。" : "下方的进度和反馈已经移出主界面，改为顶部按钮呼出。"}</small>
+          <strong>${state.mode === "resolving" ? UI_TEXT.left.progressTitleResolving : UI_TEXT.left.progressTitlePlanning}</strong>
+          <small>${
+            state.mode === "resolving"
+              ? UI_TEXT.left.resolvingProgress(Math.min(state.resolvingIndex, 4))
+              : UI_TEXT.left.planningProgress(filledSlots)
+          }</small>
+          <small>${state.mode === "resolving" ? UI_TEXT.left.resolvingProgressHint : UI_TEXT.left.planningProgressHint}</small>
         </div>
       </div>
     `;
@@ -2219,19 +2259,19 @@ function renderLeftPanel() {
   if (state.mode === "memory") {
     leftPanel.innerHTML = `
       <div class="panel-title">
-        <h2>夜间构筑</h2>
+        <h2>${UI_TEXT.memory.leftTitle}</h2>
         <span class="badge">${state.memory.placementsToday.length} / ${state.memory.pieces.length}</span>
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
-          <strong>目标</strong>
-          <small>将右侧灵块放入左侧六边形长期记忆区。</small>
-          <small>先用灵台基座解锁灰域节点，再建造术式楼/养神台/悟理阁，最后用衔接塔打通边位。</small>
+          <strong>${UI_TEXT.memory.leftGoalTitle}</strong>
+          <small>${UI_TEXT.memory.leftGoals[0]}</small>
+          <small>${UI_TEXT.memory.leftGoals[1]}</small>
         </div>
         <div class="left-info-card">
-          <strong>今夜进度</strong>
-          <small>已放置：${state.memory.placementsToday.length}</small>
-          <small>剩余：${state.memory.pieces.filter((piece) => !piece.used).length}</small>
+          <strong>${UI_TEXT.memory.leftProgressTitle}</strong>
+          <small>${UI_TEXT.memory.leftPlaced(state.memory.placementsToday.length)}</small>
+          <small>${UI_TEXT.memory.leftRemain(state.memory.pieces.filter((piece) => !piece.used).length)}</small>
         </div>
       </div>
     `;
@@ -2241,8 +2281,8 @@ function renderLeftPanel() {
   if (state.mode === "summary") {
     leftPanel.innerHTML = `
       <div class="panel-title">
-        <h2>本周结果</h2>
-        <span class="badge">${state.summary?.rank || "待结算"}</span>
+        <h2>${UI_TEXT.left.summaryTitle}</h2>
+        <span class="badge">${state.summary?.rank || UI_TEXT.left.summaryPending}</span>
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
@@ -2250,10 +2290,10 @@ function renderLeftPanel() {
           <small>${state.currentStory.body}</small>
         </div>
         <div class="left-info-card">
-          <strong>资源</strong>
-          <small>灵石 ${state.resources.coins}</small>
-          <small>悟道点 ${state.resources.insight}</small>
-          <small>灵力 ${state.resources.spirit}</small>
+          <strong>${UI_TEXT.left.resourcesTitle}</strong>
+          <small>${RESOURCE_LABELS.coins} ${state.resources.coins}</small>
+          <small>${RESOURCE_LABELS.insight} ${state.resources.insight}</small>
+          <small>${RESOURCE_LABELS.spirit} ${state.resources.spirit}</small>
         </div>
       </div>
     `;
@@ -2262,17 +2302,17 @@ function renderLeftPanel() {
 
   leftPanel.innerHTML = `
     <div class="panel-title">
-      <h2>开始前</h2>
-      <span class="badge">准备阶段</span>
+      <h2>${UI_TEXT.left.bootTitle}</h2>
+      <span class="badge">${UI_TEXT.left.bootBadge}</span>
     </div>
     <div class="left-info-grid">
       <div class="left-info-card">
-        <strong>流程</strong>
-        <small>先在右侧选择开局原型，再开始第一周。</small>
+        <strong>${UI_TEXT.left.bootFlowTitle}</strong>
+        <small>${UI_TEXT.left.bootFlowBody}</small>
       </div>
       <div class="left-info-card">
-        <strong>浮窗</strong>
-        <small>角色状态、日程进度和最近反馈都从顶部工具栏打开。</small>
+        <strong>${UI_TEXT.left.bootOverlayTitle}</strong>
+        <small>${UI_TEXT.left.bootOverlayBody}</small>
       </div>
     </div>
   `;
@@ -2295,14 +2335,14 @@ function buildTextState() {
       : [];
 
   return {
-    coordinate_system: { origin: "画布左上角", x: "向右", y: "向下" },
+    coordinate_system: UI_TEXT.stateExport.coordinateSystem,
     mode: state.mode,
     day: state.day,
     selected_archetype: state.selectedArchetype,
     current_story: state.currentStory.title,
     schedule: SLOT_NAMES.map((slot, index) => ({
       slot,
-      action: getActivity(state.schedule[index])?.name || "未安排",
+      action: getActivity(state.schedule[index])?.name || UI_TEXT.common.unassigned,
       selected: state.selectedSlot === index,
     })),
     stats: state.stats,
@@ -2315,6 +2355,10 @@ function buildTextState() {
       phase: state.resolvingFlow.phase,
       autoplay: state.resolvingFlow.autoplay,
       progress: Number(state.progress.toFixed(2)),
+      story_lines: state.resolvingFlow.storyTrail.map((item) => ({
+        title: item.title,
+        body: item.body,
+      })),
     },
     memory: {
       selected_piece: selectedPieceType,

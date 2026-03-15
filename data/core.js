@@ -37,8 +37,47 @@ const MEMORY_TYPES = {
   },
 };
 
+const MEMORY_ZONE_META = {
+  core: { label: "灵台", color: "#f0c36c" },
+  math: { label: "数术区", color: "#7fc8ff" },
+  sigil: { label: "符法区", color: "#a995ff" },
+  dao: { label: "道法区", color: "#63d3b1" },
+  craft: { label: "炼器区", color: "#ef8f85" },
+};
+
+const STAT_LABELS = {
+  intelligence: "智力",
+  memory: "记忆",
+  stamina: "体力",
+  inspiration: "灵感",
+  willpower: "心力",
+  aura: "灵力",
+  charisma: "魅力",
+  cleanliness: "整洁",
+  mood: "情绪",
+  fatigue: "疲惫",
+  selfControl: "自控",
+};
+
+const RELATIONSHIP_LABELS = {
+  roommate: "舍友缘",
+  friend: "朋友",
+  mentor: "导师",
+  counselor: "辅导员",
+};
+
+const RESOURCE_LABELS = {
+  coins: "灵石",
+  insight: "悟道点",
+  spirit: "灵力值",
+};
+
 Object.assign(window.GAME_DATA, {
   SLOT_NAMES,
   SKILL_LABELS,
   MEMORY_TYPES,
+  MEMORY_ZONE_META,
+  STAT_LABELS,
+  RELATIONSHIP_LABELS,
+  RESOURCE_LABELS,
 });

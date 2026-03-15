@@ -21,6 +21,8 @@
   - `RANK_THRESHOLDS`
 - `data/copy.js`
   - `COPY`
+- `data/ui.js`
+  - `UI_TEXT`
 
 ## 该往哪里加内容
 
@@ -28,7 +30,8 @@
 - 新增白天事件或行动：改 `data/activities.js`
 - 调整默认日程和预设按钮：改 `data/schedules.js`
 - 新增每日状态、剧情触发、结算评级：改 `data/story.js`
-- 修改界面文案、叙事文案、日志文案：改 `data/copy.js`
+- 修改叙事文案、日志文案、夜间结算描述：改 `data/copy.js`
+- 修改按钮文案、面板标题、状态提示、流程提示、ARIA 文案：改 `data/ui.js`
 - 修改时段名、技能名、灵块类型：改 `data/core.js`
 
 ## 新增一个白天事件
@@ -114,3 +117,6 @@
 - 每个 `id` 都必须唯一。
 - `schedule` 里引用的活动 id 必须已经存在于 `ACTIVITIES` 中。
 - 数值变化统一写在 `effects`、`preferredEffects` 或 `effect` 里，不要再去 `main.js` 里额外补分支。
+- `main.js` 负责流程和渲染，不应直接堆放大段界面文案；界面文案优先放入 `UI_TEXT`，叙事文案放入 `COPY`。
+- 当前约束：`main.js` 不直接写中文文案；若有新增中文，先判断应归属 `COPY` 还是 `UI_TEXT`。
+- 全局架构边界见根目录 `ARCHITECTURE.md`。

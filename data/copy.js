@@ -24,6 +24,13 @@ const COPY = {
     body: "四个时段都要安排。当前 demo 将每天压缩成 4 个关键块来体现策划案里的课程节奏。",
     speaker: "教习司",
   },
+  memoryPendingSummary: "夜间灵块尚未生成。",
+  archetypeChosen(name, summary) {
+    return {
+      title: "入学测评完成",
+      body: `你决定以“${name}”的方式开始这七天。${summary}`,
+    };
+  },
   dayStart(day) {
     return {
       title: `第 ${day} 天开始`,
@@ -37,11 +44,26 @@ const COPY = {
   dayFlowLead(slotName, activityName) {
     return `【${slotName}】你前往「${activityName}」，准备开始这一段安排。`;
   },
+  dayFlowLeadTitle(slotName) {
+    return `${slotName} · 起段`;
+  },
   dayFlowPlaceholder(slotName, activityName) {
     return `【${slotName}】关于「${activityName}」的细化剧情暂未补全，这里先用占位文案承接流程。`;
   },
+  dayFlowResult(slotName, activityName, detailBase, notes) {
+    return {
+      title: `${slotName} · ${activityName}`,
+      body: notes?.trim() ? `${detailBase}（结算回响：${notes.trim()}）` : detailBase,
+    };
+  },
   dayFlowOutro(slotName) {
     return `【${slotName}】这一段告一段落，你准备切入下一个时段。`;
+  },
+  dayFlowOutroTitle(slotName) {
+    return `${slotName} · 收束`;
+  },
+  dayModifierApplied(title) {
+    return `状态「${title}」生效。`;
   },
   dayModifierLog(day, modifier) {
     return {
@@ -85,6 +107,18 @@ const COPY = {
       body,
       speaker: "记忆系统",
     };
+  },
+  nightEffects: {
+    baseUnlock: "灵台基座点亮了一处灰域节点。",
+    abilityBoost(skillLabel) {
+      return `术式楼将 ${skillLabel} 的修行又推进了一重。`;
+    },
+    boostRecover: "养神台安抚心神，化去了一段疲惫。",
+    reasoningBreakthrough: "悟理阁让白日疑题在夜里豁然贯通。",
+    bridgeLink: "衔接塔在两座建筑之间牵起了知识脉络。",
+    resonance(count) {
+      return `术式楼与悟理阁经由衔接塔共鸣 ${count} 次，额外凝成 ${count} 点灵力。`;
+    },
   },
   summary: {
     defaultMajorBeat: "第一周还在铺垫人脉和学业。",

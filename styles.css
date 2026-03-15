@@ -736,13 +736,40 @@ button {
   background: rgba(255, 255, 255, 0.045);
 }
 
+#main-panel .resolving-shell {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 #resolve-story-card {
+  flex: 1 1 70%;
+  min-height: 0;
+  overflow: auto;
   cursor: pointer;
 }
 
 #resolve-story-card:focus-visible {
   outline: 2px solid rgba(137, 187, 255, 0.7);
   outline-offset: 2px;
+}
+
+.resolve-story-trail {
+  display: grid;
+  gap: 12px;
+  padding-right: 2px;
+}
+
+.resolve-story-line strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.resolve-story-line small {
+  display: block;
+  line-height: 1.6;
 }
 
 #main-panel .slot-card,
