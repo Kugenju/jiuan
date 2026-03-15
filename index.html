@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>久安问道录 Demo</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2309151f'/%3E%3Cpath d='M14 44 L32 12 L50 44' stroke='%23f0c36c' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='33' r='7' fill='%2363d3b1'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="game-layout">
+        <section class="stage-panel">
+          <div class="tip-strip">
+            <span id="status-line">正在读取入学档案</span>
+            <div class="toolbar-actions">
+              <button class="ghost-button" id="stats-toggle-btn" type="button">角色状态</button>
+              <button class="ghost-button" id="progress-toggle-btn" type="button">日程进度</button>
+              <button class="ghost-button" id="feedback-toggle-btn" type="button">最近反馈</button>
+            </div>
+          </div>
+          <canvas
+            id="game-canvas"
+            width="960"
+            height="540"
+            aria-label="游戏主画面"
+          ></canvas>
+          <section class="memory-stage hidden" id="memory-stage"></section>
+          <div class="panel-card" id="left-panel"></div>
+          <div class="stage-status-grid hidden" aria-hidden="true">
+            <div class="panel-card" id="flow-panel"></div>
+            <div class="panel-card" id="log-panel"></div>
+          </div>
+        </section>
+        <aside class="control-panel">
+          <div class="panel-card" id="main-panel"></div>
+        </aside>
+      </main>
+      <div class="overlay-backdrop hidden" id="overlay-backdrop"></div>
+      <aside class="panel-card overlay-drawer hidden" id="top-panel"></aside>
+      <aside class="panel-card overlay-modal hidden" id="info-modal"></aside>
+    </div>
+    <script src="./data/core.js"></script>
+    <script src="./data/archetypes.js"></script>
+    <script src="./data/activities.js"></script>
+    <script src="./data/schedules.js"></script>
+    <script src="./data/story.js"></script>
+    <script src="./data/copy.js"></script>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

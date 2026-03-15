@@ -1,0 +1,51 @@
+{
+  "name": "xiandemo",
+  "version": "1.0.0",
+  "description": "Desktop-packaged web demo for xian academy life sim.",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "npm run desktop:dev",
+    "test": "echo \"No automated test configured\"",
+    "desktop:dev": "electron .",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder --win portable"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.personal.xiandemo",
+    "productName": "XianDemo",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "data/**/*",
+      "index.html",
+      "styles.css",
+      "main.js",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

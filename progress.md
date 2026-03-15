@@ -1,0 +1,118 @@
+Original prompt: 读取我pdf的策划案，按照策划案构建一个游戏demo
+
+- 2026-03-13: Initialized task tracking.
+- Installed `pypdf` and `pdfplumber` to extract and inspect the planning PDF.
+- Next: extract the plan, summarize implementable scope, then build a browser-playable demo.
+- 2026-03-13: Extracted the 6-page plan and reduced it to a 1-week playable loop: schedule planning, stat growth, nightly memory construction, character events, and summary.
+- 2026-03-13: Built a static web demo in `index.html`, `styles.css`, and `main.js`.
+- 2026-03-13: Added deterministic hooks `window.render_game_to_text` and `window.advanceTime(ms)` plus keyboard navigation so the Playwright client can drive the demo end-to-end.
+- 2026-03-13: Installed local `playwright`, mapped the client script to the project dependency, and validated:
+- `output/web-game-final/shot-0.png`: menu -> planning -> day execution -> night -> day 2 transition, no console errors.
+- `output/web-game-memory/shot-0.png`: night memory scene with placed base/ability towers, no console errors file emitted.
+- `output/full-page-planning.png`: full-page manual check of HUD layout after entering planning mode.
+- 2026-03-13: Reworked layout after UX feedback: main interaction moved from narrow right rail to a full-width control surface under the canvas; status/log cards moved below. Verified in `output/full-page-layout-adjusted.png`.
+- 2026-03-14: Refactored the UI into a left-status/right-control layout. Left column now carries canvas, day progress, recent feedback, and compact resources; right column only shows the current actionable step.
+- 2026-03-14: Moved full character stats into an on-demand drawer opened from `#stats-toggle-btn` instead of keeping it permanently visible.
+- 2026-03-14: Revalidated interaction flow with Playwright in `output/web-game-layout-pass-2/` and captured full-page layout checks in `output/full-page-left-right-layout.png` and `output/full-page-stats-drawer.png`.
+- 2026-03-14: Reworked the night phase to better match the plan: the left main stage is now a large long-term-memory board with highlighted valid slots, and the right panel is a draggable piece tray.
+- 2026-03-14: Added drag-and-drop placement for night memory blocks while preserving click/keyboard fallback. Verified with:
+- `output/web-game-memory-refactor/state-0.json`: night mode enters correctly and exposes valid slots.
+- `output/night-memory-layout-full.png`: full-page night layout with left board and right tray.
+- `output/night-memory-after-drag.png` and `output/night-memory-drag-state.json`: drag-drop successfully places a base block and updates state.
+- 2026-03-14: Tightened the overall app to stay inside a typical laptop viewport: `app-shell` now locks to `100vh`, the main control panel scrolls internally, and night mode switches to a denser board/token layout.
+- 2026-03-14: Moved night help content into a floating modal instead of permanent right-rail explanation cards. Verified in `output/night-memory-help-modal.png` and compact viewport check in `output/night-memory-one-screen-tight.png`.
+- 2026-03-14: Finalized the day-layout split the user asked for: left panel now owns time-slot selection, the right panel only shows event cards plus pinned action buttons, and the old lower progress/feedback sections stay hidden from the main screen.
+- 2026-03-14: Wired `#progress-toggle-btn` and `#feedback-toggle-btn` to floating overlays, and verified overlay close behavior via close button and backdrop click.
+- 2026-03-14: Revalidated the one-screen laptop layout. Checks in `output/final-layout-check/layout-state.json` confirm `scrollHeight === viewport height`, `.stage-status-grid` stays `display:none`, `#main-panel` has no visible `.slot-grid`, and the execute button remains visible without scrolling.
+- 2026-03-14: Captured updated full-page artifacts after the refactor:
+- `output/final-layout-check/planning-full.png`
+- `output/final-layout-check/progress-modal-full.png`
+- `output/final-layout-check/feedback-modal-full.png`
+- `output/layout-refactor-smoke-2/state-0.json`
+- 2026-03-14: Adjusted the left column to use proportional height allocation instead of a fixed bottom-card size. `.game-layout` now stretches children, `.stage-panel` uses grid rows (`toolbar / main stage / bottom panel`), and `#left-panel` height is derived from the available viewport via `clamp(...)`.
+- 2026-03-14: Verified the left panel is fully visible at multiple laptop-like sizes with no console errors:
+- `output/left-panel-proportion-check/summary.json`
+- `output/left-panel-proportion-check/1440x900.png`
+- `output/left-panel-proportion-check/1366x768.png`
+- `output/left-panel-proportion-check/1280x720.png`
+- `output/left-panel-proportion-smoke/state-0.json`
+- 2026-03-14: Added an Electron desktop wrapper in `desktop/main.cjs` and updated `package.json` with `desktop:dev`, `desktop:pack`, and `desktop:dist` scripts plus `electron-builder` config.
+- 2026-03-14: Worked around Windows executable metadata editing failures under the Chinese project path by setting `build.win.signAndEditExecutable = false`.
+- 2026-03-14: Produced desktop artifacts successfully:
+- unpacked app: `dist-desktop/win-unpacked/XianDemo.exe`
+- portable package: `dist-desktop/XianDemo 1.0.0.exe`
+- 2026-03-14: Smoke-launched the packaged portable exe and confirmed the process stayed alive for 5 seconds after startup.
+- 2026-03-14: Began separating editable content from gameplay logic. Added `data/game-data.js` as the runtime content source and loaded it before `main.js`.
+- 2026-03-14: Moved the main editable gameplay content into data definitions:
+- archetypes: `ARCHETYPES`
+- daytime activities: `ACTIVITIES`
+- default schedules: `DEFAULT_SCHEDULES`
+- right-rail preset flows: `SCHEDULE_PRESETS`
+- day modifiers: `DAY_MODIFIERS`
+- story beat triggers/rewards: `STORY_BEATS`
+- major narrative copy: `COPY`
+- 2026-03-14: Refactored the active flow to consume data-driven content for run start, preset selection, day modifiers, activity resolution, story beat triggering, night start/end summaries, and week rank text.
+- 2026-03-14: Added `data/README.md` documenting exactly where to add new activities, preset flows, and story beats.
+- 2026-03-14: Verified the data-driven path in browser:
+- `output/data-driven-check/planning-state.json`
+- `output/data-driven-check/planning-from-data.png`
+- `output/data-driven-check/state.json`
+- `output/data-driven-check/after-day-execution.png`
+- 2026-03-14: Deleted the old unused hardcoded content blocks from `main.js`:
+- removed `LEGACY_*` data constants
+- removed old `*Legacy` gameplay functions
+- removed old `*Legacy` render backups
+- `createState()` now initializes directly from `COPY` and `createStoryFlags()`
+- 2026-03-14: Revalidated after cleanup:
+- no `Legacy` / `LEGACY_` / `hydrateStateContent` matches remain in `main.js`
+- `output/legacy-cleanup-check/state.json`
+- `output/legacy-cleanup-check/planning.png`
+- 2026-03-14: Split the old `data/game-data.js` monolith into targeted files:
+- `data/core.js`
+- `data/archetypes.js`
+- `data/activities.js`
+- `data/schedules.js`
+- `data/story.js`
+- `data/copy.js`
+- 2026-03-14: Updated `index.html` to load the split data files in order, removed the old `data/game-data.js`, and rewrote `data/README.md` to document exactly where to add archetypes, activities, presets, story beats, memory block types, and copy.
+- 2026-03-14: While validating the split in browser, found and fixed a missing helper in `main.js`: restored `getMainFocusSkill()` so homework bonuses and night ability blocks resolve correctly.
+- 2026-03-14: Revalidated after the split:
+- `node --check main.js`
+- `node --check data/core.js`
+- `node --check data/archetypes.js`
+- `node --check data/activities.js`
+- `node --check data/schedules.js`
+- `node --check data/story.js`
+- `node --check data/copy.js`
+- Playwright smoke pass against `http://127.0.0.1:4173`, with latest artifacts in `output/web-game/shot-0.png` and `output/web-game/state-0.json`
+- 2026-03-15: Fixed broken daytime interaction wiring after the cleanup/split refactors:
+- restored missing `setSlot()` so left-column time-slot clicks and keyboard slot changes work again
+- restored missing `assignActivity()` so clicking a daytime event actually writes it into the selected slot
+- changed day resolution so the game enters the night phase immediately after the fourth slot resolves instead of waiting an extra tick
+- 2026-03-15: Fixed night-phase transition/runtime failures caused by more missing helpers:
+- restored `buildMemoryPieces()`
+- restored `isValidPlacement()`
+- restored memory interaction helpers `selectMemoryPiece()`, `startMemoryDrag()`, `endMemoryDrag()`, `moveMemoryCursor()`, and `cycleMemoryPiece()`
+- 2026-03-15: Added `tmp/static-server.cjs` as a tiny local static server helper for browser validation in this environment, where background `python -m http.server` was not staying alive between commands.
+- 2026-03-15: Revalidated day and night flow in browser:
+- end-to-end Playwright/client pass now reaches day 2 planning with no runtime error
+- `output/web-game/state-0.json`
+- `output/web-game/shot-0.png`
+- click-specific browser validation confirms slot click, activity click, and execute -> night transition:
+- `output/day-click-check/planning-state.json`
+- `output/day-click-check/planning-clicks.png`
+- `output/day-click-check/after-execute-state.json`
+- `output/day-click-check/after-execute.png`
+- `output/day-click-check/errors.json`
+- 2026-03-15: Unified project text encoding policy:
+- added `.editorconfig` with `charset = utf-8`, `end_of_line = lf`, and final-newline/trailing-whitespace rules
+- verified runtime-facing text/code files are valid UTF-8 without BOM
+- rewrote `data/README.md` into Chinese so project docs match the in-game language and reduce future encoding confusion
+- 2026-03-15: Initialized a local git repository in `F:\personal\game_t\xianDemo` and added `.gitignore` for high-volume generated content:
+- ignored `node_modules/` (~647 MB), `dist-desktop/` (~442 MB), `output/`, and `tmp/`
+- this is the highest-probability fix for the Codex-side `internal serve error`, because the workspace previously exposed large dependency/build/test-output trees with no repo boundaries or ignore rules
+- verified the project itself still runs normally under HTTP serving:
+- direct `file://` loading fails by design because `index.html` imports `main.js` as a module and the browser blocks local-module loading with CORS
+- added temporary local validation helpers under `tmp/` (ignored by git) to run the Playwright client from the project context
+- `node tmp/run-serve-check.cjs` returned `HTTP 200`
+- Playwright/browser validation succeeded with artifacts in `output/serve-fix-check/shot-0.png` and `output/serve-fix-check/state-0.json`
