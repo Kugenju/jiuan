@@ -54,6 +54,132 @@ function createStoryFlags() {
   return flags;
 }
 
+const MEMORY_ZONE_META = {
+  core: { label: "灵台", color: "#f0c36c" },
+  math: { label: "数术区", color: "#7fc8ff" },
+  sigil: { label: "符法区", color: "#a995ff" },
+  dao: { label: "道法区", color: "#63d3b1" },
+  craft: { label: "炼器区", color: "#ef8f85" },
+};
+
+const MEMORY_HEX_DIRECTIONS = [
+  { q: 1, r: 0 },
+  { q: 1, r: -1 },
+  { q: 0, r: -1 },
+  { q: -1, r: 0 },
+  { q: -1, r: 1 },
+  { q: 0, r: 1 },
+];
+
+function classifyMemoryZone(q, r) {
+  if (q === 0 && r === 0) {
+    return "core";
+  }
+  if (q >= 0 && r < 0) {
+    return "sigil";
+  }
+  if (q > 0 && r >= 0) {
+    return "craft";
+  }
+  if (q <= 0 && r > 0) {
+    return "dao";
+  }
+  return "math";
+}
+
+function buildMemoryHexLayout(radius = 2) {
+  const nodes = [];
+  const coordToIndex = new Map();
+
+  for (let q = -radius; q <= radius; q += 1) {
+    const rMin = Math.max(-radius, -q - radius);
+    const rMax = Math.min(radius, -q + radius);
+    for (let r = rMin; r <= rMax; r += 1) {
+      const index = nodes.length;
+      nodes.push({
+        index,
+        q,
+        r,
+        zone: classifyMemoryZone(q, r),
+      });
+      coordToIndex.set(`${q},${r}`, index);
+    }
+  }
+
+  nodes.forEach((node) => {
+    node.neighbors = [];
+    node.edgeIds = [];
+    node.x = Math.sqrt(3) * (node.q + node.r / 2);
+    node.y = 1.5 * node.r;
+  });
+
+  const edges = [];
+  nodes.forEach((node) => {
+    MEMORY_HEX_DIRECTIONS.forEach((dir) => {
+      const neighbor = coordToIndex.get(`${node.q + dir.q},${node.r + dir.r}`);
+      if (neighbor === undefined) {
+        return;
+      }
+      node.neighbors.push(neighbor);
+      if (node.index < neighbor) {
+        edges.push({ index: edges.length, a: node.index, b: neighbor });
+      }
+    });
+  });
+
+  edges.forEach((edge) => {
+    nodes[edge.a].edgeIds.push(edge.index);
+    nodes[edge.b].edgeIds.push(edge.index);
+  });
+
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const maxX = Math.max(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxY = Math.max(...nodes.map((node) => node.y));
+  const xSpan = Math.max(1e-6, maxX - minX);
+  const ySpan = Math.max(1e-6, maxY - minY);
+  const paddingX = 8;
+  const paddingY = 8;
+  const scale = Math.min((100 - paddingX * 2) / xSpan, (100 - paddingY * 2) / ySpan);
+  const offsetX = (100 - xSpan * scale) / 2;
+  const offsetY = (100 - ySpan * scale) / 2;
+
+  nodes.forEach((node) => {
+    node.ux = offsetX + (node.x - minX) * scale;
+    node.uy = offsetY + (node.y - minY) * scale;
+  });
+
+  edges.forEach((edge) => {
+    const a = nodes[edge.a];
+    const b = nodes[edge.b];
+    edge.mx = (a.ux + b.ux) / 2;
+    edge.my = (a.uy + b.uy) / 2;
+  });
+
+  return {
+    radius,
+    nodes,
+    edges,
+    centerNodeId: coordToIndex.get("0,0") ?? 0,
+  };
+}
+
+const MEMORY_HEX_LAYOUT = buildMemoryHexLayout(2);
+
+function createMemoryBoardState() {
+  return MEMORY_HEX_LAYOUT.nodes.map((node) => ({
+    zone: node.zone,
+    unlocked: false,
+    unlockedDay: null,
+    structure: null,
+    day: null,
+  }));
+}
+
+function createMemoryBridgeState() {
+  return MEMORY_HEX_LAYOUT.edges.map(() => null);
+}
+
 function createState() {
   return {
     mode: "menu",
@@ -69,6 +195,13 @@ function createState() {
     progress: 0,
     resolvingIndex: 0,
     phaseTimer: 0,
+    resolvingFlow: {
+      phase: "idle",
+      slotIndex: 0,
+      autoplay: false,
+      autoplayDelay: 1.05,
+      autoplayTimer: 0,
+    },
     dayModifier: null,
     currentStory: structuredClone(COPY.initialStory),
     resources: { coins: 18, insight: 0, spirit: 1 },
@@ -96,12 +229,13 @@ function createState() {
     log: [{ day: 0, ...structuredClone(COPY.introLog) }],
     today: createTodayState(),
     memory: {
-      board: Array(16).fill(null),
+      board: createMemoryBoardState(),
+      bridges: createMemoryBridgeState(),
       pieces: [],
       selectedPiece: null,
       dragPieceId: null,
       placementsToday: [],
-      cursor: 12,
+      cursor: { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId },
       lastSummary: "夜间灵块尚未生成。",
     },
     summary: null,
@@ -303,6 +437,13 @@ function startDay() {
   state.phaseTimer = 0;
   state.mode = "resolving";
   state.scene = "resolving";
+  state.resolvingFlow = {
+    phase: "opening",
+    slotIndex: 0,
+    autoplay: false,
+    autoplayDelay: 1.05,
+    autoplayTimer: 0,
+  };
   state.dayModifier = buildDayModifier();
 
   if (state.dayModifier) {
@@ -310,45 +451,118 @@ function startDay() {
     addLog(modifierLog.title, modifierLog.body);
   }
 
-  state.currentStory = COPY.dayStart(state.day);
+  state.currentStory = {
+    title: `第 ${state.day} 天开始`,
+    body: COPY.dayFlowOpening(state.day),
+    speaker: "课表法阵",
+  };
+  syncUi();
+}
+
+function getResolvingSlotActivity(slotIndex) {
+  return getActivity(state.schedule[slotIndex]) || ACTIVITIES[0];
+}
+
+function showResolvingLead(slotIndex) {
+  const activity = getResolvingSlotActivity(slotIndex);
+  state.currentStory = {
+    title: `${SLOT_NAMES[slotIndex]} · 起段`,
+    body: COPY.dayFlowLead(SLOT_NAMES[slotIndex], activity.name),
+    speaker: "课表法阵",
+  };
+}
+
+function resolveSlotForFlow(slotIndex) {
+  const activity = getResolvingSlotActivity(slotIndex);
+  const notes = applyActivity(activity, slotIndex);
+  pushTimeline(slotIndex, activity, notes);
+
+  const detail = notes?.trim() || COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name);
+  state.currentStory = {
+    title: `${SLOT_NAMES[slotIndex]} · ${activity.name}`,
+    body: detail,
+    speaker: activity.tone === "study" ? "课程系统" : "日程系统",
+  };
+  state.resolvingIndex = slotIndex + 1;
+  state.progress = state.resolvingIndex / SLOT_NAMES.length;
+}
+
+function advanceResolvingFlow() {
+  if (state.mode !== "resolving") {
+    return;
+  }
+
+  const flow = state.resolvingFlow;
+  flow.autoplayTimer = 0;
+
+  if (flow.phase === "opening") {
+    flow.phase = "lead";
+    showResolvingLead(flow.slotIndex);
+    syncUi();
+    return;
+  }
+
+  if (flow.phase === "lead") {
+    resolveSlotForFlow(flow.slotIndex);
+    flow.phase = "result";
+    syncUi();
+    return;
+  }
+
+  if (flow.phase === "result") {
+    if (flow.slotIndex >= SLOT_NAMES.length - 1) {
+      addLog(COPY.dayEndLog.title, COPY.dayEndLog.body);
+      state.currentStory = {
+        title: COPY.dayEndLog.title,
+        body: COPY.dayEndLog.body,
+        speaker: "课表法阵",
+      };
+      flow.phase = "ending";
+      syncUi();
+      return;
+    }
+
+    state.currentStory = {
+      title: `${SLOT_NAMES[flow.slotIndex]} · 收束`,
+      body: COPY.dayFlowOutro(SLOT_NAMES[flow.slotIndex]),
+      speaker: "课表法阵",
+    };
+    flow.phase = "outro";
+    syncUi();
+    return;
+  }
+
+  if (flow.phase === "outro") {
+    flow.slotIndex += 1;
+    flow.phase = "lead";
+    showResolvingLead(flow.slotIndex);
+    syncUi();
+    return;
+  }
+
+  if (flow.phase === "ending") {
+    enterMemoryPhase();
+  }
+}
+
+function toggleResolvingAutoplay(force) {
+  if (state.mode !== "resolving") {
+    return;
+  }
+  const flow = state.resolvingFlow;
+  flow.autoplay = typeof force === "boolean" ? force : !flow.autoplay;
+  flow.autoplayTimer = 0;
   syncUi();
 }
 
 function update(dt) {
   state.scenePulse += dt;
-  if (state.mode !== "resolving") {
+  if (state.mode !== "resolving" || !state.resolvingFlow.autoplay) {
     return;
   }
-  state.phaseTimer += dt;
-  state.progress = Math.min(1, (state.resolvingIndex + state.phaseTimer / 1.05) / SLOT_NAMES.length);
-  if (state.phaseTimer >= 1.05) {
-    state.phaseTimer = 0;
-    resolveNextSlot();
-  }
-  syncUi();
-}
-
-function resolveNextSlot() {
-  if (state.resolvingIndex >= SLOT_NAMES.length) {
-    enterMemoryPhase();
-    return;
-  }
-  const slotIndex = state.resolvingIndex;
-  const activity = getActivity(state.schedule[slotIndex]);
-  const notes = applyActivity(activity, slotIndex);
-  pushTimeline(slotIndex, activity, notes);
-  state.currentStory = {
-    title: `${SLOT_NAMES[slotIndex]} · ${activity.name}`,
-    body: notes,
-    speaker: activity.tone === "study" ? "课程系统" : "日程系统",
-  };
-  state.resolvingIndex += 1;
-  if (state.resolvingIndex >= SLOT_NAMES.length) {
-    state.progress = 1;
-    state.phaseTimer = 0;
-    addLog(COPY.dayEndLog.title, COPY.dayEndLog.body);
-    enterMemoryPhase();
-    return;
+  state.resolvingFlow.autoplayTimer += dt;
+  if (state.resolvingFlow.autoplayTimer >= state.resolvingFlow.autoplayDelay) {
+    advanceResolvingFlow();
   }
 }
 
@@ -491,35 +705,93 @@ function buildMemoryPieces() {
   return pieces;
 }
 
-function isValidPlacement(type, index) {
-  if (!type || state.memory.board[index]) {
+function normalizeMemoryCursor(cursor = state.memory.cursor) {
+  if (
+    cursor &&
+    cursor.kind === "node" &&
+    Number.isInteger(cursor.id) &&
+    cursor.id >= 0 &&
+    cursor.id < MEMORY_HEX_LAYOUT.nodes.length
+  ) {
+    return { kind: "node", id: cursor.id };
+  }
+  if (
+    cursor &&
+    cursor.kind === "edge" &&
+    Number.isInteger(cursor.id) &&
+    cursor.id >= 0 &&
+    cursor.id < MEMORY_HEX_LAYOUT.edges.length
+  ) {
+    return { kind: "edge", id: cursor.id };
+  }
+  return { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId };
+}
+
+function resolveMemoryTarget(target) {
+  if (Number.isInteger(target)) {
+    if (target >= 0 && target < MEMORY_HEX_LAYOUT.nodes.length) {
+      return { kind: "node", id: target };
+    }
+    return null;
+  }
+  if (!target || typeof target !== "object") {
+    return null;
+  }
+  if (
+    target.kind === "node" &&
+    Number.isInteger(target.id) &&
+    target.id >= 0 &&
+    target.id < MEMORY_HEX_LAYOUT.nodes.length
+  ) {
+    return { kind: "node", id: target.id };
+  }
+  if (
+    target.kind === "edge" &&
+    Number.isInteger(target.id) &&
+    target.id >= 0 &&
+    target.id < MEMORY_HEX_LAYOUT.edges.length
+  ) {
+    return { kind: "edge", id: target.id };
+  }
+  return null;
+}
+
+function isValidNodePlacement(type, nodeId) {
+  const node = state.memory.board[nodeId];
+  if (!type || !node || !MEMORY_TYPES[type]) {
     return false;
   }
 
-  const row = Math.floor(index / 4);
-  const col = index % 4;
-  const below = index + 4 < state.memory.board.length ? state.memory.board[index + 4] : null;
-  const left = col > 0 ? state.memory.board[index - 1] : null;
-  const right = col < 3 ? state.memory.board[index + 1] : null;
-  const up = row > 0 ? state.memory.board[index - 4] : null;
-
   if (type === "base") {
-    return row === 3;
-  }
-
-  if (type === "ability" || type === "reasoning") {
-    return Boolean(below);
-  }
-
-  if (type === "boost") {
-    return Boolean(left || right || up || below);
+    return !node.unlocked && !node.structure;
   }
 
   if (type === "bridge") {
-    return Boolean(left && right);
+    return false;
   }
 
-  return false;
+  return node.unlocked && !node.structure;
+}
+
+function isValidBridgePlacement(edgeId) {
+  const edge = MEMORY_HEX_LAYOUT.edges[edgeId];
+  if (!edge || state.memory.bridges[edgeId]) {
+    return false;
+  }
+  const left = state.memory.board[edge.a];
+  const right = state.memory.board[edge.b];
+  return Boolean(left?.structure && right?.structure);
+}
+
+function isValidPlacement(type, target) {
+  const resolved = resolveMemoryTarget(target);
+  if (!type || !resolved || !MEMORY_TYPES[type]) {
+    return false;
+  }
+  if (type === "bridge") {
+    return resolved.kind === "edge" && isValidBridgePlacement(resolved.id);
+  }
+  return resolved.kind === "node" && isValidNodePlacement(type, resolved.id);
 }
 
 function selectMemoryPiece(pieceId) {
@@ -559,11 +831,29 @@ function moveMemoryCursor(dx, dy) {
   if (state.mode !== "memory") {
     return;
   }
-  const row = Math.floor(state.memory.cursor / 4);
-  const col = state.memory.cursor % 4;
-  const nextCol = clamp(col + dx, 0, 3);
-  const nextRow = clamp(row + dy, 0, 3);
-  state.memory.cursor = nextRow * 4 + nextCol;
+  const cursor = normalizeMemoryCursor();
+  const currentNodeId =
+    cursor.kind === "node" ? cursor.id : (MEMORY_HEX_LAYOUT.edges[cursor.id]?.a ?? MEMORY_HEX_LAYOUT.centerNodeId);
+  const current = MEMORY_HEX_LAYOUT.nodes[currentNodeId];
+  let bestNodeId = currentNodeId;
+  let bestScore = -Infinity;
+
+  current.neighbors.forEach((neighborId) => {
+    const neighbor = MEMORY_HEX_LAYOUT.nodes[neighborId];
+    const vx = neighbor.ux - current.ux;
+    const vy = neighbor.uy - current.uy;
+    const score = vx * dx + vy * dy;
+    if (score > bestScore) {
+      bestScore = score;
+      bestNodeId = neighborId;
+    }
+  });
+
+  if (bestScore > 0) {
+    state.memory.cursor = { kind: "node", id: bestNodeId };
+  } else {
+    state.memory.cursor = { kind: "node", id: currentNodeId };
+  }
   syncUi();
 }
 
@@ -594,7 +884,7 @@ function enterMemoryPhase() {
   state.memory.selectedPiece = state.memory.pieces.find((piece) => !piece.used)?.id || null;
   state.memory.dragPieceId = null;
   state.memory.placementsToday = [];
-  state.memory.cursor = 12;
+  state.memory.cursor = { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId };
   const story = COPY.memoryStart(state.memory.pieces.length);
   state.currentStory = {
     title: story.title,
@@ -605,21 +895,49 @@ function enterMemoryPhase() {
   syncUi();
 }
 
-function placeMemoryPiece(index, pieceId = state.memory.selectedPiece) {
+function placeMemoryPiece(target, pieceId = state.memory.selectedPiece) {
+  const resolvedTarget = resolveMemoryTarget(target ?? state.memory.cursor);
   const piece = state.memory.pieces.find((item) => item.id === pieceId);
-  if (!piece || piece.used || state.memory.board[index]) {
+  if (!piece || piece.used || !resolvedTarget) {
     return;
   }
-  if (!isValidPlacement(piece.type, index)) {
+  if (!isValidPlacement(piece.type, resolvedTarget)) {
     state.currentStory = COPY.invalidPlacement(MEMORY_TYPES[piece.type].label);
     syncUi();
     return;
   }
-  state.memory.board[index] = { type: piece.type, day: state.day };
-  state.memory.placementsToday.push({ index, type: piece.type });
+
+  if (piece.type === "base") {
+    const node = state.memory.board[resolvedTarget.id];
+    node.unlocked = true;
+    node.unlockedDay = state.day;
+    state.memory.placementsToday.push({
+      kind: "node",
+      nodeId: resolvedTarget.id,
+      type: piece.type,
+    });
+  } else if (piece.type === "bridge") {
+    state.memory.bridges[resolvedTarget.id] = { type: "bridge", day: state.day };
+    state.memory.placementsToday.push({
+      kind: "edge",
+      edgeId: resolvedTarget.id,
+      type: piece.type,
+    });
+  } else {
+    const node = state.memory.board[resolvedTarget.id];
+    node.structure = piece.type;
+    node.day = state.day;
+    state.memory.placementsToday.push({
+      kind: "node",
+      nodeId: resolvedTarget.id,
+      type: piece.type,
+    });
+  }
+
   piece.used = true;
   state.memory.dragPieceId = null;
   state.memory.selectedPiece = state.memory.pieces.find((item) => !item.used)?.id || null;
+  state.memory.cursor = resolvedTarget;
   state.memory.lastSummary = `已放置 ${state.memory.placementsToday.length} / ${state.memory.pieces.length} 枚灵块。`;
   syncUi();
 }
@@ -637,36 +955,48 @@ function endNight() {
   placed.forEach((item) => {
     if (item.type === "base") {
       state.resources.insight += 1;
-      summary.push("基座稳住了一部分悟道点。");
+      summary.push("灵台基座点亮了一处灰域节点。");
     }
     if (item.type === "ability") {
       const focus = getMainFocusSkill() || "dao";
       state.skills[focus] += 1;
       spiritGain += 1;
-      summary.push(`能力块把 ${SKILL_LABELS[focus]} 再推进了一格。`);
+      summary.push(`术式楼将 ${SKILL_LABELS[focus]} 的修行又推进了一重。`);
     }
     if (item.type === "boost") {
       state.stats.fatigue -= 1;
       state.stats.mood += 1;
-      summary.push("增益块安抚了情绪并消化疲惫。");
+      summary.push("养神台安抚心神，化去了一段疲惫。");
     }
     if (item.type === "reasoning") {
       state.stats.intelligence += 1;
       state.stats.inspiration += 1;
-      summary.push("推理块让你把白天的问题想明白了。");
+      summary.push("悟理阁让白日疑题在夜里豁然贯通。");
     }
     if (item.type === "bridge") {
       state.stats.memory += 1;
-      summary.push("衔接块打通了不同知识区域。");
+      summary.push("衔接塔在两座建筑之间牵起了知识脉络。");
     }
   });
 
-  for (let col = 0; col < 4; col += 1) {
-    const column = [state.memory.board[col], state.memory.board[col + 4], state.memory.board[col + 8], state.memory.board[col + 12]];
-    const chain = column.filter(Boolean).map((cell) => cell.type);
-    if (chain.includes("base") && chain.includes("ability") && chain.includes("reasoning")) {
-      spiritGain += 1;
+  let resonanceBonus = 0;
+  state.memory.bridges.forEach((bridge, edgeId) => {
+    if (!bridge) {
+      return;
     }
+    const edge = MEMORY_HEX_LAYOUT.edges[edgeId];
+    const left = state.memory.board[edge.a]?.structure;
+    const right = state.memory.board[edge.b]?.structure;
+    if (
+      (left === "ability" && right === "reasoning") ||
+      (left === "reasoning" && right === "ability")
+    ) {
+      resonanceBonus += 1;
+    }
+  });
+  if (resonanceBonus > 0) {
+    spiritGain += resonanceBonus;
+    summary.push(`术式楼与悟理阁经由衔接塔共鸣 ${resonanceBonus} 次，额外凝成 ${resonanceBonus} 点灵力。`);
   }
 
   state.resources.spirit += spiritGain;
@@ -851,7 +1181,7 @@ function drawMemoryScene() {
     ctx.fillRect(x, y, 100, 72);
   }
 
-  drawBanner("夜间记忆建构", "基座在底层，能力和推理要有承托，衔接让知识跨区相连。");
+  drawBanner("夜间记忆建构", "先以灵台基座解锁灰域节点，再于节点建塔，以衔接塔贯通边位。");
 
   const counts = countBoardTypes();
   const x = 140;
@@ -1025,15 +1355,20 @@ function wrapText(text, x, y, maxWidth, lineHeight, color = "#edf4ff") {
 }
 
 function countBoardTypes() {
-  return state.memory.board.reduce(
-    (acc, cell) => {
-      if (cell) {
-        acc[cell.type] += 1;
-      }
-      return acc;
-    },
-    { base: 0, ability: 0, boost: 0, reasoning: 0, bridge: 0 }
-  );
+  const counts = { base: 0, ability: 0, boost: 0, reasoning: 0, bridge: 0 };
+  state.memory.board.forEach((node) => {
+    if (!node) {
+      return;
+    }
+    if (node.unlocked) {
+      counts.base += 1;
+    }
+    if (node.structure && counts[node.structure] !== undefined) {
+      counts[node.structure] += 1;
+    }
+  });
+  counts.bridge = state.memory.bridges.filter(Boolean).length;
+  return counts;
 }
 
 function metric(label, value) {
@@ -1062,7 +1397,7 @@ function closeInfoModal() {
 function getCurrentPhaseIndex() {
   if (state.mode === "menu") return -1;
   if (state.mode === "planning") return state.selectedSlot;
-  if (state.mode === "resolving") return Math.min(state.resolvingIndex, 3);
+  if (state.mode === "resolving") return Math.min(state.resolvingFlow.slotIndex, 3);
   if (state.mode === "memory") return 3;
   return 3;
 }
@@ -1088,7 +1423,7 @@ function renderInfoModal() {
         <button class="drawer-close" id="info-close-btn" type="button">关闭</button>
       </div>
       <div class="modal-body">
-        <p class="tiny">夜间说明改成浮窗展示，右栏只保留灵块托盘和结束操作。</p>
+        <p class="tiny">夜间为六边形长期记忆区。灰域节点需先投放灵台基座解锁，每个节点仅可建一座建筑。</p>
         <div class="modal-grid">
           ${Object.entries(MEMORY_TYPES)
             .map(
@@ -1103,7 +1438,7 @@ function renderInfoModal() {
         </div>
         <div class="modal-rule">
           <strong>放置规则</strong>
-          <small>基座只能放最底层。能力塔和推理塔需要下方支撑。增益塔贴靠任意已有块即可。衔接塔需要左右相邻支点。</small>
+          <small>灵台基座只能用于解锁灰域节点。术式楼、养神台、悟理阁只能建在已解锁且空置的节点。衔接塔属于边位建筑，仅可架设在两端节点都已有建筑的相邻边上。</small>
         </div>
       </div>
     `;
@@ -1152,7 +1487,7 @@ function syncUi() {
     state.mode === "planning"
       ? `第 ${state.day} 天待安排，当前选中 ${SLOT_NAMES[state.selectedSlot]}`
       : state.mode === "resolving"
-        ? `第 ${state.day} 天执行中：${Math.round(state.progress * 100)}%`
+        ? `第 ${state.day} 天剧情推进中：${Math.round(state.progress * 100)}%${state.resolvingFlow.autoplay ? "（自动）" : "（点击）"}`
         : state.mode === "memory"
           ? `第 ${state.day} 夜正在建构记忆`
           : state.mode === "summary"
@@ -1174,18 +1509,24 @@ function renderFlowPanel() {
       <div class="phase-strip">
         ${SLOT_NAMES.map((slot, index) => {
           const activity = getActivity(state.schedule[index]);
-          const stateClass =
-            state.mode === "resolving"
-              ? index < state.resolvingIndex
-                ? "done"
-                : index === phaseIndex
-                  ? "current"
-                  : ""
-              : state.mode === "memory"
-                ? "done"
-                : index === phaseIndex
-                  ? "current"
-                  : "";
+          let stateClass = "";
+          if (state.mode === "resolving") {
+            const flow = state.resolvingFlow;
+            const finishedCount =
+              flow.phase === "opening" || flow.phase === "lead"
+                ? flow.slotIndex
+                : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
+            if (index < finishedCount) {
+              stateClass = "done";
+            }
+            if (index === phaseIndex && flow.phase !== "ending") {
+              stateClass = stateClass ? `${stateClass} current` : "current";
+            }
+          } else if (state.mode === "memory") {
+            stateClass = "done";
+          } else if (index === phaseIndex) {
+            stateClass = "current";
+          }
           return `
             <div class="phase-card ${stateClass}">
               <strong>${slot}</strong>
@@ -1200,18 +1541,24 @@ function renderFlowPanel() {
           <small>${state.currentStory.body}</small>
           <div class="mini-progress">
             ${SLOT_NAMES.map((_, index) => {
-              const cls =
-                state.mode === "resolving"
-                  ? index < state.resolvingIndex
-                    ? "done"
-                    : index === phaseIndex
-                      ? "current"
-                      : ""
-                  : state.mode === "memory"
-                    ? "done"
-                    : index === phaseIndex
-                      ? "current"
-                      : "";
+              let cls = "";
+              if (state.mode === "resolving") {
+                const flow = state.resolvingFlow;
+                const finishedCount =
+                  flow.phase === "opening" || flow.phase === "lead"
+                    ? flow.slotIndex
+                    : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
+                if (index < finishedCount) {
+                  cls = "done";
+                }
+                if (index === phaseIndex && flow.phase !== "ending") {
+                  cls = cls ? `${cls} current` : "current";
+                }
+              } else if (state.mode === "memory") {
+                cls = "done";
+              } else if (index === phaseIndex) {
+                cls = "current";
+              }
               return `<i class="${cls}"></i>`;
             }).join("")}
           </div>
@@ -1224,12 +1571,14 @@ function renderFlowPanel() {
               : state.mode === "planning"
                 ? `先选中一个时段，再给它安排活动。当前聚焦：${currentActivity ? currentActivity.name : "待安排"}。`
                 : state.mode === "resolving"
-                  ? "日程正在自动结算，留意左侧进度条和最近反馈。"
+                  ? state.resolvingFlow.autoplay
+                    ? "剧情正在自动播放，你也可以随时手动点击推进。"
+                    : "点击右侧剧情卡片或按钮，逐段推进白天流程。"
                   : state.mode === "memory"
                     ? "从待放置灵块里挑一块，落到满足规则的位置。"
                     : "查看本周结果，决定是否重新开始。"
           }</small>
-          <small>快捷键：1-4 选时段，空格填入活动，Enter 执行/确认，F 全屏。</small>
+          <small>快捷键：1-4 选时段，空格填入活动；白天推进阶段按空格/Enter前进，P切自动播放；F 全屏。</small>
         </div>
       </div>
       <div class="quick-grid">
@@ -1252,23 +1601,42 @@ function renderFlowPanel() {
 function renderPlanningPanel() {
   const activeActivity = getActivity(state.selectedActivity) || ACTIVITIES[0];
   if (state.mode === "resolving") {
-    const currentIndex = Math.min(state.resolvingIndex, 3);
-    const currentActivity = getActivity(state.schedule[currentIndex]) || activeActivity;
+    const flow = state.resolvingFlow;
+    const currentIndex = Math.min(flow.slotIndex, 3);
+    const currentActivity = getResolvingSlotActivity(currentIndex);
+    const nextLabel = flow.phase === "ending" ? "进入夜间构筑" : "点击推进剧情";
+    const autoLabel = flow.autoplay ? "自动播放：开" : "自动播放：关";
     mainPanel.innerHTML = `
       <div class="panel-title">
-        <h2>当前执行</h2>
+        <h2>白天剧情推进</h2>
         <span class="badge">${SLOT_NAMES[currentIndex]}</span>
       </div>
-      <div class="story-card focus-callout">
-        <strong>${currentActivity.name}</strong>
-        <small>${currentActivity.summary}</small>
+      <div class="story-card focus-callout" id="resolve-story-card" role="button" tabindex="0">
+        <strong>${state.currentStory.title}</strong>
+        <small>${state.currentStory.body}</small>
+        <small>当前时段：${currentActivity.name}</small>
       </div>
       <div class="progress-bar"><i style="width:${Math.max(6, state.progress * 100)}%"></i></div>
       <div class="selection-summary">
-        <p class="tiny">系统正在自动结算今天的四个时段。</p>
-        <p class="tiny">当前进度 ${Math.round(state.progress * 100)}%，完成后会自动进入夜间记忆建构。</p>
+        <p class="tiny">点击剧情卡片或按钮推进下一段。</p>
+        <p class="tiny">自动播放开启后将按节奏自动推进。当前进度 ${Math.round(state.progress * 100)}%。</p>
+      </div>
+      <div class="action-row">
+        <button class="primary" id="resolve-next-btn">${nextLabel}</button>
+        <button class="ghost-button ${flow.autoplay ? "primary" : ""}" id="resolve-auto-btn">${autoLabel}</button>
       </div>
     `;
+    const advance = () => advanceResolvingFlow();
+    mainPanel.querySelector("#resolve-next-btn").addEventListener("click", advance);
+    mainPanel.querySelector("#resolve-auto-btn").addEventListener("click", () => toggleResolvingAutoplay());
+    const storyCard = mainPanel.querySelector("#resolve-story-card");
+    storyCard.addEventListener("click", advance);
+    storyCard.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        advance();
+      }
+    });
     return;
   }
 
@@ -1352,72 +1720,161 @@ function renderMemoryStage() {
   const activePiece =
     state.memory.pieces.find((piece) => piece.id === (state.memory.dragPieceId || state.memory.selectedPiece)) ||
     null;
+  const cursor = normalizeMemoryCursor();
+  const zoneLegend = Object.entries(MEMORY_ZONE_META)
+    .map(
+      ([zoneId, meta]) => `
+        <span class="memory-zone-chip zone-${zoneId}">
+          <i style="--zone-color:${meta.color};"></i>
+          ${meta.label}
+        </span>
+      `
+    )
+    .join("");
+
+  const edgeLines = MEMORY_HEX_LAYOUT.edges
+    .map((edge) => {
+      const occupied = Boolean(state.memory.bridges[edge.index]);
+      const valid = activePiece?.type === "bridge" && isValidPlacement("bridge", { kind: "edge", id: edge.index });
+      const active = cursor.kind === "edge" && cursor.id === edge.index;
+      const connectable = isValidBridgePlacement(edge.index);
+      return `
+        <line
+          x1="${MEMORY_HEX_LAYOUT.nodes[edge.a].ux}"
+          y1="${MEMORY_HEX_LAYOUT.nodes[edge.a].uy}"
+          x2="${MEMORY_HEX_LAYOUT.nodes[edge.b].ux}"
+          y2="${MEMORY_HEX_LAYOUT.nodes[edge.b].uy}"
+          class="memory-edge-line ${occupied ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""} ${connectable ? "connectable" : ""}"
+        />
+      `;
+    })
+    .join("");
+
+  const edgeButtons = MEMORY_HEX_LAYOUT.edges
+    .map((edge) => {
+      const occupied = Boolean(state.memory.bridges[edge.index]);
+      const valid = activePiece?.type === "bridge" && isValidPlacement("bridge", { kind: "edge", id: edge.index });
+      const active = cursor.kind === "edge" && cursor.id === edge.index;
+      return `
+        <button
+          class="memory-edge ${occupied ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
+          data-memory-edge="${edge.index}"
+          style="left:${edge.mx}%;top:${edge.my}%;"
+          type="button"
+          aria-label="记忆边位 ${edge.index + 1}"
+        >
+          ${occupied ? "衔" : valid ? "可" : "边"}
+        </button>
+      `;
+    })
+    .join("");
+
+  const nodeButtons = MEMORY_HEX_LAYOUT.nodes
+    .map((node) => {
+      const nodeState = state.memory.board[node.index];
+      const structureType = nodeState.structure;
+      const valid = activePiece?.type
+        ? isValidPlacement(activePiece.type, { kind: "node", id: node.index })
+        : false;
+      const active = cursor.kind === "node" && cursor.id === node.index;
+      const title = !nodeState.unlocked
+        ? "灰域节点"
+        : structureType
+          ? MEMORY_TYPES[structureType].label
+          : "已解锁空位";
+      const desc = !nodeState.unlocked
+        ? "投放灵台基座可解锁"
+        : structureType
+          ? `第 ${nodeState.day} 天建成`
+          : "可建一座建筑";
+      return `
+        <button
+          class="memory-node zone-${node.zone} ${nodeState.unlocked ? "unlocked" : "locked"} ${structureType ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
+          data-memory-node="${node.index}"
+          data-zone="${node.zone}"
+          data-type="${structureType || ""}"
+          style="left:${node.ux}%;top:${node.uy}%;"
+          type="button"
+          aria-label="记忆节点 ${node.index + 1}"
+        >
+          <span class="memory-node-zone">${MEMORY_ZONE_META[node.zone].label}</span>
+          <strong>${title}</strong>
+          <small>${desc}</small>
+        </button>
+      `;
+    })
+    .join("");
+
   memoryStage.innerHTML = `
     <div class="memory-stage-shell">
       <div class="memory-stage-header">
         <div>
           <h2>长期记忆区</h2>
-          <p>把右侧灵块拖到左边的记忆位。底层基座最先落下，发光格表示当前可以放置的位置。</p>
+          <p>六边形节点按数术、符法、道法、炼器分区。灰域节点需先投放灵台基座解锁，每个节点只可建一座建筑，衔接塔架设在节点之间的边位。</p>
         </div>
-        <span class="badge">${activePiece ? `当前灵块：${MEMORY_TYPES[activePiece.type].label}` : "右侧选择一枚灵块"}</span>
+        <span class="badge">${activePiece ? `当前灵块：${MEMORY_TYPES[activePiece.type].label}` : "右栏选择一枚灵块"}</span>
       </div>
-      <div class="memory-row-labels">
-        <span>推理层</span>
-        <span>能力层</span>
-        <span>衔接层</span>
-        <span>基座层</span>
+      <div class="memory-zone-legend">
+        ${zoneLegend}
       </div>
-      <div class="memory-stage-board">
-        ${state.memory.board
-          .map((cell, index) => {
-            const pieceType = activePiece?.type || null;
-            const valid = pieceType ? !cell && isValidPlacement(pieceType, index) : false;
-            const type = cell?.type || "";
-            return `
-              <div
-                class="memory-slot ${valid ? "valid" : ""} ${cell ? "filled" : ""} ${state.memory.cursor === index ? "active" : ""}"
-                data-memory-slot="${index}"
-                data-type="${type}"
-              >
-                <strong>${cell ? MEMORY_TYPES[cell.type].label : `记忆位 ${index + 1}`}</strong>
-                <small>${cell ? `第 ${cell.day} 天建成` : valid ? "拖到这里" : "等待承托或连接条件"}</small>
-              </div>
-            `;
-          })
-          .join("")}
+      <div class="memory-hex-board">
+        <svg class="memory-edge-map" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          ${edgeLines}
+        </svg>
+        <div class="memory-edge-layer">
+          ${edgeButtons}
+        </div>
+        <div class="memory-node-layer">
+          ${nodeButtons}
+        </div>
       </div>
     </div>
   `;
-  memoryStage.querySelectorAll("[data-memory-slot]").forEach((slot) => {
-    const index = Number(slot.dataset.memorySlot);
-    slot.addEventListener("dragover", (event) => {
-      const draggingPiece =
-        state.memory.pieces.find((piece) => piece.id === state.memory.dragPieceId && !piece.used) || null;
-      if (!draggingPiece || state.memory.board[index] || !isValidPlacement(draggingPiece.type, index)) {
+
+  const bindTargetEvents = (selector, kind) => {
+    memoryStage.querySelectorAll(selector).forEach((element) => {
+      const rawId = kind === "node" ? element.dataset.memoryNode : element.dataset.memoryEdge;
+      const id = Number(rawId);
+      if (!Number.isFinite(id)) {
         return;
       }
-      event.preventDefault();
-      slot.classList.add("drop-target");
+      const target = { kind, id };
+
+      element.addEventListener("dragover", (event) => {
+        const draggingPiece =
+          state.memory.pieces.find((piece) => piece.id === state.memory.dragPieceId && !piece.used) || null;
+        if (!draggingPiece || !isValidPlacement(draggingPiece.type, target)) {
+          return;
+        }
+        event.preventDefault();
+        element.classList.add("drop-target");
+      });
+
+      element.addEventListener("dragleave", () => {
+        element.classList.remove("drop-target");
+      });
+
+      element.addEventListener("drop", (event) => {
+        event.preventDefault();
+        element.classList.remove("drop-target");
+        if (state.memory.dragPieceId) {
+          placeMemoryPiece(target, state.memory.dragPieceId);
+        }
+      });
+
+      element.addEventListener("click", () => {
+        state.memory.cursor = target;
+        if (activePiece && isValidPlacement(activePiece.type, target)) {
+          placeMemoryPiece(target, activePiece.id);
+        } else {
+          syncUi();
+        }
+      });
     });
-    slot.addEventListener("dragleave", () => {
-      slot.classList.remove("drop-target");
-    });
-    slot.addEventListener("drop", (event) => {
-      event.preventDefault();
-      slot.classList.remove("drop-target");
-      if (state.memory.dragPieceId) {
-        placeMemoryPiece(index, state.memory.dragPieceId);
-      }
-    });
-    slot.addEventListener("click", () => {
-      state.memory.cursor = index;
-      if (activePiece && !state.memory.board[index] && isValidPlacement(activePiece.type, index)) {
-        placeMemoryPiece(index, activePiece.id);
-      } else {
-        syncUi();
-      }
-    });
-  });
+  };
+
+  bindTargetEvents("[data-memory-node]", "node");
+  bindTargetEvents("[data-memory-edge]", "edge");
 }
 
 function renderTopPanel() {
@@ -1529,7 +1986,7 @@ function renderMemoryPanel() {
     </div>
     <div class="selection-summary">
       <p class="tiny">步骤 1：从下方托盘抓取灵块。</p>
-      <p class="tiny">步骤 2：拖到左侧发光的记忆位。</p>
+      <p class="tiny">步骤 2：拖到左侧六边节点或节点间边位。</p>
       <p class="tiny">步骤 3：至少放一块，再结束夜晚。</p>
     </div>
     <div class="tower-grid">
@@ -1547,8 +2004,8 @@ function renderMemoryPanel() {
     <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
     <div class="story-card" style="margin-top:16px;">
       <strong>当前规则提示</strong>
-      <small>基座只能放最底层；能力塔和推理塔要建立在已成型记忆上；增益塔贴靠任意已有块；衔接塔需要左右相邻支点。</small>
-      <small>也可以先点右侧灵块，再点左侧有效记忆位完成放置。</small>
+      <small>灰域节点需先用灵台基座解锁；每个节点只能建一座建筑；术式楼/养神台/悟理阁仅可放在已解锁空节点；衔接塔属于边位建筑。</small>
+      <small>节点需先解锁再建造，衔接塔请点击两节点之间的边位。</small>
     </div>
     <div class="action-row">
       <button class="primary" id="end-night-btn">结束夜晚</button>
@@ -1658,7 +2115,7 @@ function renderMemoryPanelCompact() {
     </div>
     <div class="selection-summary">
       <p class="tiny">步骤 1：抓起一枚灵块。</p>
-      <p class="tiny">步骤 2：拖到左侧发光格。</p>
+      <p class="tiny">步骤 2：拖到左侧六边节点或边位。</p>
       <p class="tiny">步骤 3：至少放一块，再结束夜晚。</p>
     </div>
     <div class="action-row">
@@ -1668,7 +2125,7 @@ function renderMemoryPanelCompact() {
     <div class="story-card" style="margin-top:16px;">
       <strong>当前放置提示</strong>
       <small>右栏现在只保留灵块托盘和操作按钮。块类型与规则说明已移到浮窗。</small>
-      <small>也可以先点右侧灵块，再点左侧有效记忆位完成放置。</small>
+      <small>节点需先解锁再建造，衔接塔请点击两节点之间的边位。</small>
     </div>
     <div class="action-row">
       <button class="primary" id="end-night-btn">结束夜晚</button>
@@ -1692,8 +2149,10 @@ function renderMemoryPanelCompact() {
 function renderLeftPanel() {
   if (state.mode === "planning" || state.mode === "resolving") {
     const filledSlots = state.schedule.filter(Boolean).length;
-    const currentSlotName = SLOT_NAMES[state.selectedSlot];
-    const currentSlotActivity = getActivity(state.schedule[state.selectedSlot]);
+    const resolvingSlotIndex =
+      state.mode === "resolving" ? Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1) : state.selectedSlot;
+    const currentSlotName = SLOT_NAMES[resolvingSlotIndex];
+    const currentSlotActivity = getActivity(state.schedule[resolvingSlotIndex]);
     leftPanel.innerHTML = `
       <div class="panel-title">
         <h2>今日时段</h2>
@@ -1702,16 +2161,22 @@ function renderLeftPanel() {
       <div class="left-slot-grid">
         ${SLOT_NAMES.map((slot, index) => {
           const activity = getActivity(state.schedule[index]);
-          const cls =
-            state.mode === "resolving"
-              ? index < state.resolvingIndex
-                ? "done"
-                : index === Math.min(state.resolvingIndex, 3)
-                  ? "active"
-                  : ""
-              : index === state.selectedSlot
-                ? "active"
-                : "";
+          let cls = "";
+          if (state.mode === "resolving") {
+            const flow = state.resolvingFlow;
+            const finishedCount =
+              flow.phase === "opening" || flow.phase === "lead"
+                ? flow.slotIndex
+                : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
+            if (index < finishedCount) {
+              cls = "done";
+            }
+            if (index === Math.min(flow.slotIndex, SLOT_NAMES.length - 1) && flow.phase !== "ending") {
+              cls = cls ? `${cls} active` : "active";
+            }
+          } else if (index === state.selectedSlot) {
+            cls = "active";
+          }
           return `
             <button class="left-slot-card ${cls}" data-left-slot="${index}" ${state.mode === "resolving" ? "disabled" : ""}>
               <strong>${slot}</strong>
@@ -1722,15 +2187,17 @@ function renderLeftPanel() {
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
-          <strong>${state.mode === "resolving" ? "自动结算中" : "当前步骤"}</strong>
+          <strong>${state.mode === "resolving" ? "剧情推进中" : "当前步骤"}</strong>
           <small>${
             state.mode === "resolving"
-              ? `正在结算 ${SLOT_NAMES[Math.min(state.resolvingIndex, 3)]}，进度 ${Math.round(state.progress * 100)}%。`
+              ? `当前来到 ${currentSlotName}，进度 ${Math.round(state.progress * 100)}%。`
               : `先在左侧选择时段，再在右侧选择事件。当前时段：${currentSlotName}。`
           }</small>
           <small>${
             state.mode === "resolving"
-              ? "Progress and feedback are now moved into top toolbar popups."
+              ? state.resolvingFlow.autoplay
+                ? "自动播放已开启，可随时手动点击插入推进。"
+                : "点击右侧剧情卡片或“点击推进剧情”按钮进入下一段。"
               : currentSlotActivity
                 ? `已安排：${currentSlotActivity.name}`
                 : `${currentSlotName} 还没有安排事件。`
@@ -1758,8 +2225,8 @@ function renderLeftPanel() {
       <div class="left-info-grid">
         <div class="left-info-card">
           <strong>目标</strong>
-          <small>把右侧托盘中的灵块拖到左侧高亮的记忆位中。</small>
-          <small>规则说明和类型介绍改为浮窗显示，不再长期占据界面空间。</small>
+          <small>将右侧灵块放入左侧六边形长期记忆区。</small>
+          <small>先用灵台基座解锁灰域节点，再建造术式楼/养神台/悟理阁，最后用衔接塔打通边位。</small>
         </div>
         <div class="left-info-card">
           <strong>今夜进度</strong>
@@ -1812,8 +2279,23 @@ function renderLeftPanel() {
 }
 
 function buildTextState() {
+  const selectedPieceType = state.memory.pieces.find((piece) => piece.id === state.memory.selectedPiece)?.type || null;
+  const cursor = normalizeMemoryCursor(state.memory.cursor);
+  const validNodes =
+    selectedPieceType && selectedPieceType !== "bridge"
+      ? MEMORY_HEX_LAYOUT.nodes
+          .filter((node) => isValidPlacement(selectedPieceType, { kind: "node", id: node.index }))
+          .map((node) => ({ id: node.index, q: node.q, r: node.r }))
+      : [];
+  const validEdges =
+    selectedPieceType === "bridge"
+      ? MEMORY_HEX_LAYOUT.edges
+          .filter((edge) => isValidPlacement("bridge", { kind: "edge", id: edge.index }))
+          .map((edge) => ({ id: edge.index, from: edge.a, to: edge.b }))
+      : [];
+
   return {
-    coordinate_system: { origin: "canvas top-left", x: "right", y: "down" },
+    coordinate_system: { origin: "画布左上角", x: "向右", y: "向下" },
     mode: state.mode,
     day: state.day,
     selected_archetype: state.selectedArchetype,
@@ -1829,27 +2311,47 @@ function buildTextState() {
     relationships: state.relationships,
     ui: state.ui,
     resolving: {
-      current_slot_index: state.resolvingIndex,
+      current_slot_index: state.resolvingFlow.slotIndex,
+      phase: state.resolvingFlow.phase,
+      autoplay: state.resolvingFlow.autoplay,
       progress: Number(state.progress.toFixed(2)),
     },
     memory: {
-      selected_piece: state.memory.pieces.find((piece) => piece.id === state.memory.selectedPiece)?.type || null,
-      cursor: {
-        index: state.memory.cursor,
-        row: Math.floor(state.memory.cursor / 4),
-        col: state.memory.cursor % 4,
-      },
-      valid_slots: state.memory.selectedPiece
-        ? state.memory.board
-            .map((cell, index) => (!cell && isValidPlacement(state.memory.pieces.find((piece) => piece.id === state.memory.selectedPiece)?.type, index) ? index : null))
-            .filter((value) => value !== null)
-        : [],
+      selected_piece: selectedPieceType,
+      cursor:
+        cursor.kind === "node"
+          ? {
+              kind: "node",
+              id: cursor.id,
+              q: MEMORY_HEX_LAYOUT.nodes[cursor.id].q,
+              r: MEMORY_HEX_LAYOUT.nodes[cursor.id].r,
+              zone: MEMORY_HEX_LAYOUT.nodes[cursor.id].zone,
+            }
+          : {
+              kind: "edge",
+              id: cursor.id,
+              from: MEMORY_HEX_LAYOUT.edges[cursor.id].a,
+              to: MEMORY_HEX_LAYOUT.edges[cursor.id].b,
+            },
+      valid_nodes: validNodes,
+      valid_edges: validEdges,
       pieces_left: state.memory.pieces.filter((piece) => !piece.used).map((piece) => piece.type),
-      board: state.memory.board.map((cell, index) => ({
+      board: state.memory.board.map((nodeState, index) => ({
         index,
-        row: Math.floor(index / 4),
-        col: index % 4,
-        type: cell?.type || null,
+        q: MEMORY_HEX_LAYOUT.nodes[index].q,
+        r: MEMORY_HEX_LAYOUT.nodes[index].r,
+        zone: nodeState.zone,
+        unlocked: nodeState.unlocked,
+        unlocked_day: nodeState.unlockedDay,
+        structure: nodeState.structure,
+        structure_day: nodeState.day,
+      })),
+      bridges: state.memory.bridges.map((bridge, edgeId) => ({
+        edge_id: edgeId,
+        from: MEMORY_HEX_LAYOUT.edges[edgeId].a,
+        to: MEMORY_HEX_LAYOUT.edges[edgeId].b,
+        built: Boolean(bridge),
+        day: bridge?.day ?? null,
       })),
     },
     summary: state.summary,
@@ -1868,7 +2370,7 @@ window.advanceTime = (ms) => {
 
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i"].includes(key) || event.key === " ") {
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) || event.key === " ") {
     event.preventDefault();
   }
   if (key === "i") {
@@ -1896,6 +2398,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Enter" && state.mode === "planning") {
     startDay();
+  }
+  if (state.mode === "resolving") {
+    if (key === " " || key === "enter") advanceResolvingFlow();
+    if (key === "p") toggleResolvingAutoplay();
   }
   if (state.mode === "memory") {
     if (key === "arrowleft") moveMemoryCursor(-1, 0);

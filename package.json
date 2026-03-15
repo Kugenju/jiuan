@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "npm run desktop:dev",
     "test": "echo \"No automated test configured\"",
+    "encoding:check": "node scripts/encoding-guard.cjs",
+    "encoding:fix": "node scripts/encoding-guard.cjs --fix",
     "desktop:dev": "electron .",
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder --win portable"

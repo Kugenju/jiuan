@@ -11,29 +11,29 @@ const SKILL_LABELS = {
 
 const MEMORY_TYPES = {
   base: {
-    label: "基座块",
+    label: "灵台基座",
     accent: "#f0c36c",
-    desc: "只能放在最底层，用来稳定长期记忆。",
+    desc: "用于解锁灰色节点，唤醒识海地脉。",
   },
   ability: {
-    label: "能力块",
+    label: "术式楼",
     accent: "#89bbff",
-    desc: "需要建立在已有记忆上，强化主要修习能力。",
+    desc: "建在已解锁空节点，强化当天主修能力。",
   },
   boost: {
-    label: "增益块",
+    label: "养神台",
     accent: "#63d3b1",
-    desc: "贴靠任意已有块体，恢复状态并稳定情绪。",
+    desc: "调息养神，缓解疲惫并稳定心境。",
   },
   reasoning: {
-    label: "推理块",
+    label: "悟理阁",
     accent: "#ef8f85",
-    desc: "需要承托，用来整理白天遇到的问题。",
+    desc: "梳理白日所学，提升悟性与推演。",
   },
   bridge: {
-    label: "衔接块",
+    label: "衔接塔",
     accent: "#c3a7ff",
-    desc: "在同一层连接相邻记忆区域，形成跨学科联结。",
+    desc: "架设于两座已建节点之间，贯通知识脉络。",
   },
 };
 

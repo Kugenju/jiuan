@@ -31,6 +31,18 @@ const COPY = {
       speaker: "课表法阵",
     };
   },
+  dayFlowOpening(day) {
+    return `第 ${day} 天的课铃响起，你按着排好的时段逐步推进今日计划。`;
+  },
+  dayFlowLead(slotName, activityName) {
+    return `【${slotName}】你前往「${activityName}」，准备开始这一段安排。`;
+  },
+  dayFlowPlaceholder(slotName, activityName) {
+    return `【${slotName}】关于「${activityName}」的细化剧情暂未补全，这里先用占位文案承接流程。`;
+  },
+  dayFlowOutro(slotName) {
+    return `【${slotName}】这一段告一段落，你准备切入下一个时段。`;
+  },
   dayModifierLog(day, modifier) {
     return {
       title: `第 ${day} 天状态`,
@@ -44,7 +56,7 @@ const COPY = {
   memoryStart(pieceCount) {
     return {
       title: "夜间记忆构筑",
-      body: "把今天积累的灵块塞进长期记忆。基座在底层，能力和推理需要承托，增益与衔接负责把区块连起来。",
+      body: "把今天积累的灵块塞进长期记忆。灰域节点要先用灵台基座解锁，每个节点只能建一座建筑，衔接塔专门架在节点之间的边位上。",
       speaker: "记忆系统",
       summary: `今晚生成 ${pieceCount} 枚灵块。`,
     };
