@@ -195,6 +195,7 @@ function createState() {
     resolvingFlow: {
       phase: "idle",
       slotIndex: 0,
+      segmentIndex: 0,
       autoplay: false,
       autoplayDelay: 1.05,
       autoplayTimer: 0,
@@ -440,6 +441,7 @@ function startDay() {
   state.resolvingFlow = {
     phase: "opening",
     slotIndex: 0,
+    segmentIndex: 0,
     autoplay: false,
     autoplayDelay: 1.05,
     autoplayTimer: 0,
@@ -485,6 +487,7 @@ function showResolvingLead(slotIndex) {
   const activity = getResolvingSlotActivity(slotIndex);
   // New schedule slot starts: reset card trail and append from slot opening.
   resetResolvingStoryTrail();
+  state.resolvingFlow.segmentIndex = 0;
   pushResolvingStory(
     COPY.dayFlowLeadTitle(SLOT_NAMES[slotIndex]),
     COPY.dayFlowLead(SLOT_NAMES[slotIndex], activity.name),
@@ -492,13 +495,36 @@ function showResolvingLead(slotIndex) {
   );
 }
 
+function getResolvingSegments(slotIndex) {
+  const activity = getResolvingSlotActivity(slotIndex);
+  const rawSegments = Array.isArray(activity.storySegments) ? activity.storySegments : [];
+  const segments = rawSegments.map((line) => String(line || "").trim()).filter(Boolean);
+  return segments.length ? segments : [COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name)];
+}
+
+function appendResolvingSegment(slotIndex) {
+  const flow = state.resolvingFlow;
+  const activity = getResolvingSlotActivity(slotIndex);
+  const segments = getResolvingSegments(slotIndex);
+  if (flow.segmentIndex >= segments.length) {
+    return false;
+  }
+  const index = flow.segmentIndex;
+  pushResolvingStory(
+    COPY.dayFlowSegmentTitle(SLOT_NAMES[slotIndex], index, segments.length),
+    segments[index],
+    activity.tone === "study" ? UI_TEXT.speakers.course : UI_TEXT.speakers.routine
+  );
+  flow.segmentIndex += 1;
+  return true;
+}
+
 function resolveSlotForFlow(slotIndex) {
   const activity = getResolvingSlotActivity(slotIndex);
   const notes = applyActivity(activity, slotIndex);
   pushTimeline(slotIndex, activity, notes);
 
-  const detailBase = COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name);
-  const detail = COPY.dayFlowResult(SLOT_NAMES[slotIndex], activity.name, detailBase, notes);
+  const detail = COPY.dayFlowResult(SLOT_NAMES[slotIndex], activity.name, notes);
   pushResolvingStory(
     detail.title,
     detail.body,
@@ -524,6 +550,22 @@ function advanceResolvingFlow() {
   }
 
   if (flow.phase === "lead") {
+    if (appendResolvingSegment(flow.slotIndex)) {
+      flow.phase = "story";
+      syncUi();
+      return;
+    }
+    resolveSlotForFlow(flow.slotIndex);
+    flow.phase = "result";
+    syncUi();
+    return;
+  }
+
+  if (flow.phase === "story") {
+    if (appendResolvingSegment(flow.slotIndex)) {
+      syncUi();
+      return;
+    }
     resolveSlotForFlow(flow.slotIndex);
     flow.phase = "result";
     syncUi();
@@ -1529,12 +1571,12 @@ function renderFlowPanel() {
         ${SLOT_NAMES.map((slot, index) => {
           const activity = getActivity(state.schedule[index]);
           let stateClass = "";
-          if (state.mode === "resolving") {
-            const flow = state.resolvingFlow;
-            const finishedCount =
-              flow.phase === "opening" || flow.phase === "lead"
-                ? flow.slotIndex
-                : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
+            if (state.mode === "resolving") {
+              const flow = state.resolvingFlow;
+              const finishedCount =
+                flow.phase === "opening" || flow.phase === "lead" || flow.phase === "story"
+                  ? flow.slotIndex
+                  : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
             if (index < finishedCount) {
               stateClass = "done";
             }
@@ -1564,7 +1606,7 @@ function renderFlowPanel() {
               if (state.mode === "resolving") {
                 const flow = state.resolvingFlow;
                 const finishedCount =
-                  flow.phase === "opening" || flow.phase === "lead"
+                  flow.phase === "opening" || flow.phase === "lead" || flow.phase === "story"
                     ? flow.slotIndex
                     : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
                 if (index < finishedCount) {
@@ -2203,7 +2245,7 @@ function renderLeftPanel() {
           if (state.mode === "resolving") {
             const flow = state.resolvingFlow;
             const finishedCount =
-              flow.phase === "opening" || flow.phase === "lead"
+              flow.phase === "opening" || flow.phase === "lead" || flow.phase === "story"
                 ? flow.slotIndex
                 : Math.min(flow.slotIndex + 1, SLOT_NAMES.length);
             if (index < finishedCount) {
@@ -2355,6 +2397,8 @@ function buildTextState() {
       phase: state.resolvingFlow.phase,
       autoplay: state.resolvingFlow.autoplay,
       progress: Number(state.progress.toFixed(2)),
+      segment_index: state.resolvingFlow.segmentIndex,
+      segment_total: getResolvingSegments(Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1)).length,
       story_lines: state.resolvingFlow.storyTrail.map((item) => ({
         title: item.title,
         body: item.body,

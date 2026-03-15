@@ -47,13 +47,18 @@ const COPY = {
   dayFlowLeadTitle(slotName) {
     return `${slotName} · 起段`;
   },
+  dayFlowSegmentTitle(slotName, index, total) {
+    return `${slotName} · 剧情 ${index + 1}/${total}`;
+  },
   dayFlowPlaceholder(slotName, activityName) {
     return `【${slotName}】关于「${activityName}」的细化剧情暂未补全，这里先用占位文案承接流程。`;
   },
-  dayFlowResult(slotName, activityName, detailBase, notes) {
+  dayFlowResult(slotName, activityName, notes) {
     return {
-      title: `${slotName} · ${activityName}`,
-      body: notes?.trim() ? `${detailBase}（结算回响：${notes.trim()}）` : detailBase,
+      title: `${slotName} · ${activityName} · 结算`,
+      body: notes?.trim()
+        ? `【${slotName}】「${activityName}」阶段结算完成。（结算回响：${notes.trim()}）`
+        : `【${slotName}】「${activityName}」阶段结算完成。`,
     };
   },
   dayFlowOutro(slotName) {
