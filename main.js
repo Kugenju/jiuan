@@ -161,7 +161,81 @@ function buildMemoryHexLayout(radius = 2) {
   };
 }
 
+function buildConvexHull(points) {
+  const uniquePoints = [];
+  const seen = new Set();
+  points.forEach((point) => {
+    const key = `${point.x.toFixed(4)},${point.y.toFixed(4)}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    uniquePoints.push({ x: point.x, y: point.y });
+  });
+  if (uniquePoints.length <= 2) {
+    return uniquePoints;
+  }
+
+  uniquePoints.sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  const cross = (origin, a, b) => (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+
+  const lower = [];
+  uniquePoints.forEach((point) => {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  });
+
+  const upper = [];
+  for (let index = uniquePoints.length - 1; index >= 0; index -= 1) {
+    const point = uniquePoints[index];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function buildMemoryZoneAreas(layout) {
+  const centerNode = layout.nodes[layout.centerNodeId];
+  const zoneIds = ["math", "sigil", "craft", "dao"];
+  const polygons = zoneIds
+    .map((zone) => {
+      const points = layout.nodes
+        .filter((node) => node.zone === zone)
+        .map((node) => ({ x: node.ux, y: node.uy }));
+      points.push({ x: centerNode.ux, y: centerNode.uy });
+      const hull = buildConvexHull(points);
+      return {
+        zone,
+        points: hull.map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`).join(" "),
+      };
+    })
+    .filter((polygon) => polygon.points);
+
+  const anchorId = centerNode.neighbors[0];
+  const anchorNode = anchorId === undefined ? null : layout.nodes[anchorId];
+  const coreRadius = anchorNode
+    ? (Math.hypot(anchorNode.ux - centerNode.ux, anchorNode.uy - centerNode.uy) * 0.46).toFixed(3)
+    : "6.200";
+
+  return {
+    polygons,
+    core: {
+      x: centerNode.ux.toFixed(3),
+      y: centerNode.uy.toFixed(3),
+      r: coreRadius,
+    },
+  };
+}
+
 const MEMORY_HEX_LAYOUT = buildMemoryHexLayout(2);
+const MEMORY_ZONE_AREAS = buildMemoryZoneAreas(MEMORY_HEX_LAYOUT);
 
 function createMemoryBoardState() {
   return MEMORY_HEX_LAYOUT.nodes.map((node) => ({
@@ -1811,6 +1885,10 @@ function renderMemoryStage() {
       `
     )
     .join("");
+  const zoneAreaPolygons = MEMORY_ZONE_AREAS.polygons
+    .map((polygon) => `<polygon class="memory-zone-area zone-${polygon.zone}" points="${polygon.points}" />`)
+    .join("");
+  const coreZoneArea = `<circle class="memory-zone-area zone-core" cx="${MEMORY_ZONE_AREAS.core.x}" cy="${MEMORY_ZONE_AREAS.core.y}" r="${MEMORY_ZONE_AREAS.core.r}" />`;
 
   const edgeLines = MEMORY_HEX_LAYOUT.edges
     .map((edge) => {
@@ -1828,6 +1906,33 @@ function renderMemoryStage() {
         />
       `;
     })
+    .join("");
+
+  const gridLines = MEMORY_HEX_LAYOUT.edges
+    .map(
+      (edge) => `
+        <line
+          x1="${MEMORY_HEX_LAYOUT.nodes[edge.a].ux}"
+          y1="${MEMORY_HEX_LAYOUT.nodes[edge.a].uy}"
+          x2="${MEMORY_HEX_LAYOUT.nodes[edge.b].ux}"
+          y2="${MEMORY_HEX_LAYOUT.nodes[edge.b].uy}"
+          class="memory-grid-line"
+        />
+      `
+    )
+    .join("");
+
+  const gridDots = MEMORY_HEX_LAYOUT.nodes
+    .map(
+      (node) => `
+        <circle
+          cx="${node.ux}"
+          cy="${node.uy}"
+          r="0.78"
+          class="memory-grid-dot zone-${node.zone}"
+        />
+      `
+    )
     .join("");
 
   const edgeButtons = MEMORY_HEX_LAYOUT.edges
@@ -1867,6 +1972,7 @@ function renderMemoryStage() {
         : structureType
           ? UI_TEXT.memory.nodeBuiltDesc(nodeState.day)
           : UI_TEXT.memory.nodeEmptyDesc;
+      const zoneLabel = MEMORY_ZONE_META[node.zone].label;
       return `
         <button
           class="memory-node zone-${node.zone} ${nodeState.unlocked ? "unlocked" : "locked"} ${structureType ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
@@ -1875,11 +1981,14 @@ function renderMemoryStage() {
           data-type="${structureType || ""}"
           style="left:${node.ux}%;top:${node.uy}%;"
           type="button"
-          aria-label="${UI_TEXT.memory.nodeAria(node.index)}"
+          aria-label="${UI_TEXT.memory.nodeAria(node.index)} - ${zoneLabel} - ${title} - ${desc}"
         >
-          <span class="memory-node-zone">${MEMORY_ZONE_META[node.zone].label}</span>
-          <strong>${title}</strong>
-          <small>${desc}</small>
+          <span class="memory-node-dot" aria-hidden="true"></span>
+          <span class="memory-node-tooltip" role="tooltip">
+            <em>${zoneLabel}</em>
+            <strong>${title}</strong>
+            <small>${desc}</small>
+          </span>
         </button>
       `;
     })
@@ -1898,7 +2007,15 @@ function renderMemoryStage() {
         ${zoneLegend}
       </div>
       <div class="memory-hex-board">
-        <svg class="memory-edge-map" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <svg class="memory-zone-map" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          ${zoneAreaPolygons}
+          ${coreZoneArea}
+        </svg>
+        <svg class="memory-grid-map" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          ${gridLines}
+          ${gridDots}
+        </svg>
+        <svg class="memory-edge-map" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           ${edgeLines}
         </svg>
         <div class="memory-edge-layer">
