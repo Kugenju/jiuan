@@ -1,3 +1,4 @@
+(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 function buildMemoryPiecesForState(rootState, getMainFocusSkill) {
@@ -259,3 +260,4 @@ Object.assign(window.GAME_RUNTIME, {
   cycleMemoryPieceOnState,
   placeMemoryPieceOnState,
 });
+})();

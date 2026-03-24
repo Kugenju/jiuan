@@ -1,3 +1,4 @@
+(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 const {
@@ -128,3 +129,4 @@ Object.assign(window.GAME_RUNTIME, {
   triggerStoryBeatForActivity,
   applyActivityToState,
 });
+})();

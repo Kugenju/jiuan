@@ -1,3 +1,4 @@
+(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 function createEmptySchedule(slotCount) {
@@ -66,3 +67,4 @@ Object.assign(window.GAME_RUNTIME, {
   clearPlanningSchedule,
   areAllScheduleSlotsFilled,
 });
+})();

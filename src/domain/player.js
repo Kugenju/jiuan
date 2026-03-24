@@ -1,3 +1,4 @@
+(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 function clonePlayerValue(value) {
@@ -95,3 +96,4 @@ Object.assign(window.GAME_RUNTIME, {
   applyArchetypeEffectToRoot,
   normalizePlayerState,
 });
+})();
