@@ -482,7 +482,6 @@ function renderMemoryShardField() {
     .map((piece, index) => {
       const meta = getMemoryPieceMeta(piece);
       const scatter = layout[index];
-      const zoneLabel = getMemoryPieceZoneLabel(piece);
       const skillBadge = piece.type === "focus" && piece.skill ? `<span class="memory-shard-badge">${SKILL_LABELS[piece.skill]}</span>` : "";
       return `
         <button
@@ -497,7 +496,6 @@ function renderMemoryShardField() {
           aria-label="${getMemoryPieceLabel(piece)}"
         >
           <span class="memory-shard-shape" aria-hidden="true"></span>
-          ${zoneLabel ? `<span class="memory-shard-zone">${zoneLabel.replace("区", "")}</span>` : ""}
           ${skillBadge}
         </button>
       `;
@@ -1899,7 +1897,7 @@ function renderMemoryPanelCompact() {
     </div>
     <div class="selection-summary">
       <p class="tiny">先用锚片点亮节点，再把两枚灵块拼成一处建筑。</p>
-      <p class="tiny">不同形状对应不同灵块类型；彩色纹片的颜色直接对应可落下的分区。</p>
+      <p class="tiny">不同形状只对应灵块类型；颜色只对应可落下的分区。</p>
       <p class="tiny">只有完整建成的建筑会在夜间结算时生效。</p>
     </div>
     <div class="action-row">

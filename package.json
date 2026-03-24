@@ -1,6 +1,6 @@
 {
   "name": "xiandemo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop-packaged web demo for xian academy life sim.",
   "main": "desktop/main.cjs",
   "scripts": {
@@ -32,6 +32,7 @@
     "files": [
       "desktop/**/*",
       "data/**/*",
+      "src/**/*",
       "index.html",
       "styles.css",
       "main.js",
