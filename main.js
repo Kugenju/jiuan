@@ -68,6 +68,7 @@ const {
   enterMemoryPhaseState,
   placeMemoryPieceInFlow,
   finishNightFlow,
+  createKeyboardHandler,
   buildTextStateExport,
 } = window.GAME_RUNTIME;
 
@@ -2354,61 +2355,30 @@ window.advanceTime = (ms) => {
   render();
 };
 
-document.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) || event.key === " ") {
-    event.preventDefault();
-  }
-  if (key === "i") {
-    toggleStatsPanel();
-  }
-  if (event.key >= "1" && event.key <= "4" && state.mode === "planning") {
-    setSlot(Number(event.key) - 1);
-  }
-  if (state.mode === "menu") {
-    if (key === "arrowleft") changeArchetype(-1);
-    if (key === "arrowright") changeArchetype(1);
-    if (key === "enter") {
-      applyArchetypeIfNeeded();
-      startRun();
-    }
-  }
-  if (state.mode === "planning") {
-    if (key === "arrowleft") setSlot(clamp(state.selectedSlot - 1, 0, 3));
-    if (key === "arrowright") setSlot(clamp(state.selectedSlot + 1, 0, 3));
-    if (key === "arrowup") cycleSelectedActivity(-1);
-    if (key === "arrowdown") cycleSelectedActivity(1);
-    if (key === " ") assignActivity(state.selectedActivity);
-    if (key === "a") fillPreset("balanced");
-    if (key === "b") fillPreset("body_expand");
-  }
-  if (event.key === "Enter" && state.mode === "planning") {
-    startDay();
-  }
-  if (state.mode === "resolving") {
-    if (key === " " || key === "enter") advanceResolvingFlow();
-    if (key === "p") toggleResolvingAutoplay();
-  }
-  if (state.mode === "memory") {
-    if (key === "arrowleft") moveMemoryCursor(-1, 0);
-    if (key === "arrowright") moveMemoryCursor(1, 0);
-    if (key === "arrowup") moveMemoryCursor(0, -1);
-    if (key === "arrowdown") moveMemoryCursor(0, 1);
-    if (key === "a") cycleMemoryPiece(-1);
-    if (key === "b") cycleMemoryPiece(1);
-    if (key === " ") placeMemoryPiece(state.memory.cursor);
-    if (key === "enter") endNight();
-  }
-  if (state.mode === "summary" && key === "enter") {
-    restartGame();
-  }
-  if (event.key.toLowerCase() === "f") {
-    toggleFullscreen();
-  }
-  if (event.key === "Escape" && document.fullscreenElement) {
-    document.exitFullscreen();
-  }
-});
+document.addEventListener(
+  "keydown",
+  createKeyboardHandler({
+    state,
+    clamp,
+    toggleStatsPanel,
+    setSlot,
+    changeArchetype,
+    applyArchetypeIfNeeded,
+    startRun,
+    cycleSelectedActivity,
+    assignActivity,
+    fillPreset,
+    startDay,
+    advanceResolvingFlow,
+    toggleResolvingAutoplay,
+    moveMemoryCursor,
+    cycleMemoryPiece,
+    placeMemoryPiece,
+    endNight,
+    restartGame,
+    toggleFullscreen,
+  })
+);
 
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
