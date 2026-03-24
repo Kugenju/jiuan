@@ -1,39 +1,148 @@
 (() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
-function buildMemoryPiecesForState(rootState, getMainFocusSkill) {
-  const pieces = [];
-  const pushPiece = (type) => {
-    pieces.push({
-      id: `day-${rootState.day}-${type}-${pieces.length}`,
-      type,
-      used: false,
-    });
+function getZoneSkillKey(zone) {
+  if (zone === "math") return "math";
+  if (zone === "sigil") return "sigil";
+  if (zone === "dao") return "dao";
+  if (zone === "craft") return "craft";
+  return null;
+}
+
+function buildMemoryPieceId(rootState, type, index) {
+  return `day-${rootState.day}-${type}-${index}`;
+}
+
+function createMemoryPiece(rootState, type, index, extra = {}) {
+  return {
+    id: buildMemoryPieceId(rootState, type, index),
+    type,
+    skill: extra.skill || null,
+    source: extra.source || null,
+    used: false,
+  };
+}
+
+function pushMemoryPiece(pieces, rootState, type, extra = {}) {
+  pieces.push(createMemoryPiece(rootState, type, pieces.length, extra));
+}
+
+function sumValues(values) {
+  return Object.values(values || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
+function pickWeightedKey(weights, rng) {
+  const entries = Object.entries(weights).filter(([, value]) => value > 0);
+  if (!entries.length) {
+    return null;
+  }
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  let roll = rng() * total;
+  for (const [key, value] of entries) {
+    roll -= value;
+    if (roll <= 0) {
+      return key;
+    }
+  }
+  return entries[entries.length - 1][0];
+}
+
+function buildFocusSkillWeights(rootState, fallbackSkill) {
+  const weights = {};
+  Object.entries(rootState.today.courseSkills || {}).forEach(([skill, value]) => {
+    if (value > 0) {
+      weights[skill] = value * 2;
+    }
+  });
+
+  Object.entries(rootState.today.focus || {}).forEach(([skill, value]) => {
+    if (value > 0) {
+      weights[skill] = (weights[skill] || 0) + value;
+    }
+  });
+
+  if (rootState.today.latestCourseSkill) {
+    weights[rootState.today.latestCourseSkill] = (weights[rootState.today.latestCourseSkill] || 0) + 2;
+  }
+
+  if (fallbackSkill) {
+    weights[fallbackSkill] = (weights[fallbackSkill] || 0) + 1;
+  }
+
+  return weights;
+}
+
+function buildRandomFragmentWeights(rootState) {
+  const weights = {
+    schema: 1,
+    focus: 1,
+    echo: 1,
+    calm: 1,
+    link: 0.35,
   };
 
-  pushPiece("base");
+  weights.schema += (rootState.today.kinds?.course || 0) + rootState.today.tones.study;
+  weights.focus += Math.max(0, sumValues(rootState.today.courseSkills) - 1);
+  weights.echo += (rootState.today.kinds?.assignment || 0) * 2 + Math.max(0, rootState.today.randomEvents.length - 1);
+  weights.calm += rootState.today.tones.life + rootState.today.tones.body;
+  weights.link += rootState.today.tones.social + rootState.today.randomEvents.length * 0.8;
 
-  if (getMainFocusSkill() || rootState.today.tones.study > 0) {
-    pushPiece("ability");
+  if (rootState.stats.fatigue >= 5) {
+    weights.calm += 2;
+  }
+  if (Object.values(rootState.today.tones).filter((count) => count > 0).length >= 3) {
+    weights.link += 1.2;
   }
 
-  if (rootState.today.tones.study >= 2 || (rootState.today.kinds?.assignment || 0) > 0) {
-    pushPiece("reasoning");
+  return weights;
+}
+
+function buildMemoryPiecesForState(rootState, context) {
+  const pieces = [];
+  const fallbackSkill = context.getMainFocusSkill?.() || rootState.today.latestCourseSkill || "dao";
+  const focusSkillWeights = buildFocusSkillWeights(rootState, fallbackSkill);
+  const drawFocusSkill = () => pickWeightedKey(focusSkillWeights, rootState.rng) || fallbackSkill;
+
+  pushMemoryPiece(pieces, rootState, "anchor", { source: "base_unlock" });
+
+  if ((rootState.today.kinds?.course || 0) > 0) {
+    pushMemoryPiece(pieces, rootState, "schema", { source: "course_frame" });
+    pushMemoryPiece(pieces, rootState, "focus", {
+      skill: rootState.today.latestCourseSkill || drawFocusSkill(),
+      source: "course_focus",
+    });
   }
 
-  if (rootState.today.tones.life > 0 || rootState.today.tones.body > 0) {
-    pushPiece("boost");
+  if ((rootState.today.kinds?.assignment || 0) > 0) {
+    pushMemoryPiece(pieces, rootState, "echo", { source: "assignment_review" });
   }
 
-  if (
-    rootState.today.tones.social > 0 ||
-    Object.values(rootState.today.tones).filter((count) => count > 0).length >= 3
-  ) {
-    pushPiece("bridge");
+  if (rootState.today.tones.life > 0 || rootState.today.tones.body > 0 || rootState.stats.fatigue >= 5) {
+    pushMemoryPiece(pieces, rootState, "calm", { source: "recovery_loop" });
   }
 
-  if (pieces.length === 1) {
-    pushPiece("boost");
+  if (rootState.today.tones.social > 0 || rootState.today.randomEvents.length > 0) {
+    pushMemoryPiece(pieces, rootState, "link", { source: "social_threads" });
+  }
+
+  let randomDraws =
+    context.memoryBuildRules.randomDrawsBase +
+    (rootState.today.randomEvents.length > 0 ? 1 : 0) +
+    (Object.values(rootState.today.tones).filter((count) => count > 0).length >= 3 ? 1 : 0);
+  randomDraws = Math.max(1, Math.min(context.memoryBuildRules.randomDrawsMax, randomDraws));
+
+  const randomWeights = buildRandomFragmentWeights(rootState);
+  for (let index = 0; index < randomDraws; index += 1) {
+    const type = pickWeightedKey(randomWeights, rootState.rng) || "echo";
+    pushMemoryPiece(pieces, rootState, type, {
+      skill: type === "focus" ? drawFocusSkill() : null,
+      source: "random_draw",
+    });
+  }
+
+  if (pieces.filter((piece) => piece.type !== "anchor").length < 2) {
+    pushMemoryPiece(pieces, rootState, "echo", { source: "minimum_density" });
+    pushMemoryPiece(pieces, rootState, "calm", { source: "minimum_density" });
   }
 
   return pieces;
@@ -80,21 +189,77 @@ function resolveMemoryTargetOnLayout(layout, target) {
   return null;
 }
 
-function isValidNodePlacementForState(rootState, memoryTypes, type, nodeId) {
+function normalizeFragmentTypes(fragments) {
+  return fragments.map((fragment) => fragment.type).sort().join("|");
+}
+
+function scoreFragmentsForBuildings(fragments, fragmentTypes, buildRules) {
+  const scores = Object.fromEntries((buildRules.buildingPriority || []).map((type) => [type, 0]));
+  fragments.forEach((fragment) => {
+    const affinity = fragmentTypes[fragment.type]?.affinity || {};
+    Object.entries(affinity).forEach(([building, value]) => {
+      scores[building] = (scores[building] || 0) + value;
+    });
+  });
+  return scores;
+}
+
+function resolveMemoryStructureFromFragments(fragments, fragmentTypes, buildRules) {
+  if (!fragments.length) {
+    return null;
+  }
+
+  const typeKey = normalizeFragmentTypes(fragments);
+  const recipe = (buildRules.recipes || []).find((item) => item.fragments.slice().sort().join("|") === typeKey);
+  if (recipe) {
+    return {
+      building: recipe.building,
+      recipeId: recipe.id,
+      hint: recipe.hint,
+      exact: true,
+    };
+  }
+
+  const scores = scoreFragmentsForBuildings(fragments, fragmentTypes, buildRules);
+  const priority = buildRules.buildingPriority || ["ability", "reasoning", "boost"];
+  const winner =
+    priority
+      .slice()
+      .sort((left, right) => (scores[right] || 0) - (scores[left] || 0) || priority.indexOf(left) - priority.indexOf(right))[0] ||
+    "reasoning";
+
+  return {
+    building: winner,
+    recipeId: null,
+    hint: null,
+    exact: false,
+  };
+}
+
+function resolveStructureSkillForNode(nodeState, getMainFocusSkill) {
+  const skillFragment = (nodeState.fragments || []).find((fragment) => fragment.skill);
+  if (skillFragment?.skill) {
+    return skillFragment.skill;
+  }
+  return getZoneSkillKey(nodeState.zone) || getMainFocusSkill?.() || null;
+}
+
+function isValidNodePlacementForState(rootState, fragmentTypes, buildRules, type, nodeId) {
   const node = rootState.memory.board[nodeId];
-  if (!type || !node || !memoryTypes[type]) {
+  const meta = fragmentTypes[type];
+  if (!type || !node || !meta) {
     return false;
   }
 
-  if (type === "base") {
+  if (meta.slot === "locked-node") {
     return !node.unlocked && !node.structure;
   }
 
-  if (type === "bridge") {
+  if (meta.slot === "edge") {
     return false;
   }
 
-  return node.unlocked && !node.structure;
+  return node.unlocked && !node.structure && (node.fragments?.length || 0) < buildRules.nodeCapacity;
 }
 
 function isValidBridgePlacementForState(rootState, layout, edgeId) {
@@ -107,15 +272,16 @@ function isValidBridgePlacementForState(rootState, layout, edgeId) {
   return Boolean(left?.structure && right?.structure);
 }
 
-function isValidMemoryPlacement(rootState, layout, memoryTypes, type, target) {
+function isValidMemoryPlacement(rootState, layout, fragmentTypes, buildRules, type, target) {
   const resolved = resolveMemoryTargetOnLayout(layout, target);
-  if (!type || !resolved || !memoryTypes[type]) {
+  const meta = fragmentTypes[type];
+  if (!type || !resolved || !meta) {
     return false;
   }
-  if (type === "bridge") {
+  if (meta.slot === "edge") {
     return resolved.kind === "edge" && isValidBridgePlacementForState(rootState, layout, resolved.id);
   }
-  return resolved.kind === "node" && isValidNodePlacementForState(rootState, memoryTypes, type, resolved.id);
+  return resolved.kind === "node" && isValidNodePlacementForState(rootState, fragmentTypes, buildRules, type, resolved.id);
 }
 
 function selectMemoryPieceOnState(rootState, pieceId) {
@@ -202,40 +368,58 @@ function cycleMemoryPieceOnState(rootState, delta) {
 function placeMemoryPieceOnState(rootState, target, context) {
   const resolvedTarget = resolveMemoryTargetOnLayout(context.layout, target ?? rootState.memory.cursor);
   const piece = rootState.memory.pieces.find((item) => item.id === context.pieceId);
-  if (!piece || piece.used || !resolvedTarget) {
+  const pieceMeta = piece ? context.memoryFragmentTypes[piece.type] : null;
+  if (!piece || piece.used || !resolvedTarget || !pieceMeta) {
     return { ok: false, reason: "invalid_piece_or_target" };
   }
-  if (!isValidMemoryPlacement(rootState, context.layout, context.memoryTypes, piece.type, resolvedTarget)) {
-    return { ok: false, reason: "invalid_placement", invalidLabel: context.memoryTypes[piece.type].label };
+  if (!isValidMemoryPlacement(rootState, context.layout, context.memoryFragmentTypes, context.memoryBuildRules, piece.type, resolvedTarget)) {
+    return { ok: false, reason: "invalid_placement", invalidLabel: pieceMeta.label };
   }
 
-  if (piece.type === "base") {
+  const placement = {
+    kind: resolvedTarget.kind,
+    type: piece.type,
+    pieceId: piece.id,
+    pieceSkill: piece.skill || null,
+  };
+
+  if (pieceMeta.slot === "locked-node") {
     const node = rootState.memory.board[resolvedTarget.id];
     node.unlocked = true;
     node.unlockedDay = rootState.day;
-    rootState.memory.placementsToday.push({
-      kind: "node",
-      nodeId: resolvedTarget.id,
-      type: piece.type,
-    });
-  } else if (piece.type === "bridge") {
+    placement.nodeId = resolvedTarget.id;
+  } else if (pieceMeta.slot === "edge") {
     rootState.memory.bridges[resolvedTarget.id] = { type: "bridge", day: rootState.day };
-    rootState.memory.placementsToday.push({
-      kind: "edge",
-      edgeId: resolvedTarget.id,
-      type: piece.type,
-    });
+    placement.edgeId = resolvedTarget.id;
   } else {
     const node = rootState.memory.board[resolvedTarget.id];
-    node.structure = piece.type;
-    node.day = rootState.day;
-    rootState.memory.placementsToday.push({
-      kind: "node",
-      nodeId: resolvedTarget.id,
+    node.fragments = node.fragments || [];
+    node.fragments.push({
       type: piece.type,
+      skill: piece.skill || null,
+      source: piece.source || null,
     });
+    placement.nodeId = resolvedTarget.id;
+    placement.fragmentCount = node.fragments.length;
+
+    if (node.fragments.length >= context.memoryBuildRules.nodeCapacity) {
+      const resolvedStructure = resolveMemoryStructureFromFragments(
+        node.fragments,
+        context.memoryFragmentTypes,
+        context.memoryBuildRules
+      );
+      node.structure = resolvedStructure?.building || "reasoning";
+      node.structureSkill = resolveStructureSkillForNode(node, context.getMainFocusSkill);
+      node.day = rootState.day;
+      placement.builtStructure = node.structure;
+      placement.structureSkill = node.structureSkill;
+      placement.recipeId = resolvedStructure?.recipeId || null;
+      placement.fragments = structuredClone(node.fragments);
+      node.fragments = [];
+    }
   }
 
+  rootState.memory.placementsToday.push(placement);
   piece.used = true;
   rootState.memory.dragPieceId = null;
   rootState.memory.selectedPiece = rootState.memory.pieces.find((item) => !item.used)?.id || null;
@@ -243,6 +427,7 @@ function placeMemoryPieceOnState(rootState, target, context) {
   return {
     ok: true,
     target: resolvedTarget,
+    placement,
   };
 }
 
@@ -250,6 +435,8 @@ Object.assign(window.GAME_RUNTIME, {
   buildMemoryPiecesForState,
   normalizeMemoryCursorOnLayout,
   resolveMemoryTargetOnLayout,
+  resolveMemoryStructureFromFragments,
+  getZoneSkillKey,
   isValidNodePlacementForState,
   isValidBridgePlacementForState,
   isValidMemoryPlacement,

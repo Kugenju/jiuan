@@ -2,19 +2,20 @@
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 function buildTextStateExport(rootState, context) {
-  const selectedPieceType =
-    rootState.memory.pieces.find((piece) => piece.id === rootState.memory.selectedPiece)?.type || null;
+  const selectedPiece =
+    rootState.memory.pieces.find((piece) => piece.id === rootState.memory.selectedPiece) || null;
+  const selectedPieceType = selectedPiece?.type || null;
   const cursor = context.normalizeMemoryCursor(rootState.memory.cursor);
   const validNodes =
-    selectedPieceType && selectedPieceType !== "bridge"
+    selectedPieceType && selectedPieceType !== "link"
       ? context.layout.nodes
           .filter((node) => context.isValidPlacement(selectedPieceType, { kind: "node", id: node.index }))
           .map((node) => ({ id: node.index, q: node.q, r: node.r }))
       : [];
   const validEdges =
-    selectedPieceType === "bridge"
+    selectedPieceType === "link"
       ? context.layout.edges
-          .filter((edge) => context.isValidPlacement("bridge", { kind: "edge", id: edge.index }))
+          .filter((edge) => context.isValidPlacement("link", { kind: "edge", id: edge.index }))
           .map((edge) => ({ id: edge.index, from: edge.a, to: edge.b }))
       : [];
 
@@ -49,7 +50,12 @@ function buildTextStateExport(rootState, context) {
       })),
     },
     memory: {
-      selected_piece: selectedPieceType,
+      selected_piece: selectedPiece
+        ? {
+            type: selectedPiece.type,
+            skill: selectedPiece.skill,
+          }
+        : null,
       cursor:
         cursor.kind === "node"
           ? {
@@ -67,7 +73,9 @@ function buildTextStateExport(rootState, context) {
             },
       valid_nodes: validNodes,
       valid_edges: validEdges,
-      pieces_left: rootState.memory.pieces.filter((piece) => !piece.used).map((piece) => piece.type),
+      pieces_left: rootState.memory.pieces
+        .filter((piece) => !piece.used)
+        .map((piece) => ({ type: piece.type, skill: piece.skill || null })),
       board: rootState.memory.board.map((nodeState, index) => ({
         index,
         q: context.layout.nodes[index].q,
@@ -76,7 +84,12 @@ function buildTextStateExport(rootState, context) {
         unlocked: nodeState.unlocked,
         unlocked_day: nodeState.unlockedDay,
         structure: nodeState.structure,
+        structure_skill: nodeState.structureSkill ?? null,
         structure_day: nodeState.day,
+        fragments: (nodeState.fragments || []).map((fragment) => ({
+          type: fragment.type,
+          skill: fragment.skill || null,
+        })),
       })),
       bridges: rootState.memory.bridges.map((bridge, edgeId) => ({
         edge_id: edgeId,

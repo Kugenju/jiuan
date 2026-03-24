@@ -18,6 +18,8 @@ const {
   ACTIVITY_KIND_LABELS,
   SKILL_LABELS,
   MEMORY_TYPES,
+  MEMORY_FRAGMENT_TYPES,
+  MEMORY_BUILD_RULES,
   MEMORY_ZONE_META,
   STAT_LABELS,
   RELATIONSHIP_LABELS,
@@ -57,6 +59,8 @@ const {
   computeRankForState,
   finishRunState,
   buildMemoryPiecesForState,
+  resolveMemoryStructureFromFragments,
+  getZoneSkillKey,
   normalizeMemoryCursorOnLayout,
   resolveMemoryTargetOnLayout,
   isValidNodePlacementForState,
@@ -304,7 +308,9 @@ function createMemoryBoardState() {
     zone: node.zone,
     unlocked: false,
     unlockedDay: null,
+    fragments: [],
     structure: null,
+    structureSkill: null,
     day: null,
   }));
 }
@@ -360,6 +366,40 @@ function getActivityPreferredSlotText(activity) {
     return "任意时段";
   }
   return preferred.map((index) => SLOT_NAMES[index]).filter(Boolean).join(" / ");
+}
+
+function getMemoryPieceMeta(piece) {
+  return MEMORY_FRAGMENT_TYPES[piece?.type] || null;
+}
+
+function getMemoryPieceLabel(piece) {
+  const meta = getMemoryPieceMeta(piece);
+  if (!meta) {
+    return piece?.type || "璁板繂纰庣墖";
+  }
+  if (piece?.type === "focus" && piece.skill) {
+    return `${meta.label} · ${SKILL_LABELS[piece.skill]}`;
+  }
+  return meta.label;
+}
+
+function getMemoryPieceDesc(piece) {
+  const meta = getMemoryPieceMeta(piece);
+  if (!meta) {
+    return "";
+  }
+  if (piece?.type === "focus" && piece.skill) {
+    return `${meta.desc} 鎼哄甫鏂瑰悜锛?${SKILL_LABELS[piece.skill]}銆?`;
+  }
+  return meta.desc;
+}
+
+function getMemoryNodePrediction(nodeState) {
+  return resolveMemoryStructureFromFragments(nodeState.fragments || [], MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES);
+}
+
+function getMemoryBuiltCount() {
+  return state.memory.placementsToday.filter((item) => Boolean(item.builtStructure)).length;
 }
 
 function getPlanningScheduleFilledText(filled) {
@@ -433,6 +473,8 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
   return {
     layout: MEMORY_HEX_LAYOUT,
     memoryTypes: MEMORY_TYPES,
+    memoryFragmentTypes: MEMORY_FRAGMENT_TYPES,
+    memoryBuildRules: MEMORY_BUILD_RULES,
     skillLabels: SKILL_LABELS,
     uiText: UI_TEXT,
     copy: RUNTIME_COPY,
@@ -603,7 +645,7 @@ function triggerStoryBeats(activity, notes) {
 }
 
 function buildMemoryPieces() {
-  return buildMemoryPiecesForState(state, getMainFocusSkill);
+  return buildMemoryPiecesForState(state, createNightFlowContext());
 }
 
 function normalizeMemoryCursor(cursor = state.memory.cursor) {
@@ -615,7 +657,7 @@ function resolveMemoryTarget(target) {
 }
 
 function isValidNodePlacement(type, nodeId) {
-  return isValidNodePlacementForState(state, MEMORY_TYPES, type, nodeId);
+  return isValidNodePlacementForState(state, MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES, type, nodeId);
 }
 
 function isValidBridgePlacement(edgeId) {
@@ -623,7 +665,7 @@ function isValidBridgePlacement(edgeId) {
 }
 
 function isValidPlacement(type, target) {
-  return isValidMemoryPlacement(state, MEMORY_HEX_LAYOUT, MEMORY_TYPES, type, target);
+  return isValidMemoryPlacement(state, MEMORY_HEX_LAYOUT, MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES, type, target);
 }
 
 function selectMemoryPiece(pieceId) {
@@ -1386,7 +1428,7 @@ function renderMemoryStage() {
   const edgeLines = MEMORY_HEX_LAYOUT.edges
     .map((edge) => {
       const occupied = Boolean(state.memory.bridges[edge.index]);
-      const valid = activePiece?.type === "bridge" && isValidPlacement("bridge", { kind: "edge", id: edge.index });
+      const valid = activePiece?.type === "link" && isValidPlacement("link", { kind: "edge", id: edge.index });
       const active = cursor.kind === "edge" && cursor.id === edge.index;
       const connectable = isValidBridgePlacement(edge.index);
       return `
@@ -1431,7 +1473,7 @@ function renderMemoryStage() {
   const edgeButtons = MEMORY_HEX_LAYOUT.edges
     .map((edge) => {
       const occupied = Boolean(state.memory.bridges[edge.index]);
-      const valid = activePiece?.type === "bridge" && isValidPlacement("bridge", { kind: "edge", id: edge.index });
+      const valid = activePiece?.type === "link" && isValidPlacement("link", { kind: "edge", id: edge.index });
       const active = cursor.kind === "edge" && cursor.id === edge.index;
       return `
         <button
@@ -1451,32 +1493,36 @@ function renderMemoryStage() {
     .map((node) => {
       const nodeState = state.memory.board[node.index];
       const structureType = nodeState.structure;
-      const valid = activePiece?.type
-        ? isValidPlacement(activePiece.type, { kind: "node", id: node.index })
-        : false;
+      const prediction = getMemoryNodePrediction(nodeState);
+      const valid = activePiece?.type ? isValidPlacement(activePiece.type, { kind: "node", id: node.index }) : false;
       const active = cursor.kind === "node" && cursor.id === node.index;
       const title = !nodeState.unlocked
         ? UI_TEXT.memory.nodeLockedTitle
         : structureType
-          ? MEMORY_TYPES[structureType].label
-          : UI_TEXT.memory.nodeUnlockedTitle;
+          ? `${MEMORY_TYPES[structureType].label}${nodeState.structureSkill ? ` ? ${SKILL_LABELS[nodeState.structureSkill]}` : ""}`
+          : nodeState.fragments.length
+            ? `Assembling: ${nodeState.fragments.map(getMemoryPieceLabel).join(" + ")}`
+            : UI_TEXT.memory.nodeUnlockedTitle;
       const desc = !nodeState.unlocked
         ? UI_TEXT.memory.nodeLockedDesc
         : structureType
           ? UI_TEXT.memory.nodeBuiltDesc(nodeState.day)
-          : UI_TEXT.memory.nodeEmptyDesc;
+          : nodeState.fragments.length
+            ? `Inserted ${nodeState.fragments.length} / ${MEMORY_BUILD_RULES.nodeCapacity}. Predicted result: ${MEMORY_TYPES[prediction?.building || "reasoning"].label}.`
+            : UI_TEXT.memory.nodeEmptyDesc;
       const zoneLabel = MEMORY_ZONE_META[node.zone].label;
       return `
         <button
-          class="memory-node zone-${node.zone} ${nodeState.unlocked ? "unlocked" : "locked"} ${structureType ? "filled" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
+          class="memory-node zone-${node.zone} ${nodeState.unlocked ? "unlocked" : "locked"} ${structureType ? "filled" : ""} ${nodeState.fragments.length ? "assembling" : ""} ${valid ? "valid" : ""} ${active ? "active" : ""}"
           data-memory-node="${node.index}"
           data-zone="${node.zone}"
-          data-type="${structureType || ""}"
+          data-type="${structureType || prediction?.building || ""}"
           style="left:${node.ux}%;top:${node.uy}%;"
           type="button"
           aria-label="${UI_TEXT.memory.nodeAria(node.index)} - ${zoneLabel} - ${title} - ${desc}"
         >
           <span class="memory-node-dot" aria-hidden="true"></span>
+          ${nodeState.fragments.length ? `<span class="memory-node-stack">${nodeState.fragments.length}/${MEMORY_BUILD_RULES.nodeCapacity}</span>` : ""}
           <span class="memory-node-tooltip" role="tooltip">
             <em>${zoneLabel}</em>
             <strong>${title}</strong>
@@ -1491,10 +1537,10 @@ function renderMemoryStage() {
     <div class="memory-stage-shell">
       <div class="memory-stage-header">
         <div>
-          <h2>${UI_TEXT.memory.stageTitle}</h2>
-          <p>${UI_TEXT.memory.stageDesc}</p>
+          <h2>Memory Board</h2>
+          <p>Daytime events are distilled into fragments at night. Unlock a node with an anchor fragment, combine two fragments on the same node into a finished building, then connect finished buildings with a link fragment.</p>
         </div>
-        <span class="badge">${activePiece ? UI_TEXT.memory.stageCurrentPiece(MEMORY_TYPES[activePiece.type].label) : UI_TEXT.memory.stageSelectHint}</span>
+        <span class="badge">${activePiece ? `Current fragment: ${getMemoryPieceLabel(activePiece)}` : "Select a fragment from the tray"}</span>
       </div>
       <div class="memory-zone-legend">
         ${zoneLegend}
@@ -1653,66 +1699,7 @@ function renderMenuPanel() {
 }
 
 function renderMemoryPanel() {
-  const pieces = state.memory.pieces
-    .map(
-      (piece) => `
-        <button
-          class="memory-token ${piece.id === state.memory.selectedPiece ? "active" : ""} ${piece.id === state.memory.dragPieceId ? "dragging" : ""} ${piece.used ? "disabled" : ""}"
-          data-piece="${piece.id}"
-          data-type="${piece.type}"
-          draggable="${piece.used ? "false" : "true"}"
-          ${piece.used ? "disabled" : ""}
-        >
-          <strong>${MEMORY_TYPES[piece.type].label}</strong>
-          <small>${MEMORY_TYPES[piece.type].desc}</small>
-        </button>
-      `
-    )
-    .join("");
-  mainPanel.innerHTML = `
-    <div class="panel-title">
-      <h2>${UI_TEXT.memory.panelTitle}</h2>
-      <span class="badge">${state.memory.lastSummary}</span>
-    </div>
-    <div class="selection-summary">
-      <p class="tiny">${UI_TEXT.memory.steps[0]}</p>
-      <p class="tiny">${UI_TEXT.memory.steps[1]}</p>
-      <p class="tiny">${UI_TEXT.memory.steps[2]}</p>
-    </div>
-    <div class="tower-grid">
-      ${Object.entries(MEMORY_TYPES)
-        .map(
-          ([, meta]) => `
-            <div class="tower-card">
-              <strong style="color:${meta.accent};">${meta.label}</strong>
-              <span>${meta.desc}</span>
-            </div>
-          `
-        )
-        .join("")}
-    </div>
-    <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
-    <div class="story-card" style="margin-top:16px;">
-      <strong>${UI_TEXT.memory.tipsTitle}</strong>
-      <small>${UI_TEXT.memory.tips[0]}</small>
-      <small>${UI_TEXT.memory.tips[1]}</small>
-    </div>
-    <div class="action-row">
-      <button class="primary" id="end-night-btn">${UI_TEXT.memory.endBtn}</button>
-    </div>
-  `;
-  mainPanel.querySelectorAll("[data-piece]").forEach((button) => {
-    button.addEventListener("click", () => selectMemoryPiece(button.dataset.piece));
-    button.addEventListener("dragstart", (event) => {
-      startMemoryDrag(button.dataset.piece);
-      event.dataTransfer?.setData("text/plain", button.dataset.piece);
-      event.dataTransfer.effectAllowed = "move";
-    });
-    button.addEventListener("dragend", () => {
-      endMemoryDrag();
-    });
-  });
-  mainPanel.querySelector("#end-night-btn").addEventListener("click", endNight);
+  renderMemoryPanelCompact();
 }
 
 function renderSummaryPanel() {
@@ -1792,33 +1779,47 @@ function renderMemoryPanelCompact() {
           draggable="${piece.used ? "false" : "true"}"
           ${piece.used ? "disabled" : ""}
         >
-          <strong>${MEMORY_TYPES[piece.type].label}</strong>
-          <small>${MEMORY_TYPES[piece.type].desc}</small>
+          <strong>${getMemoryPieceLabel(piece)}</strong>
+          <small>${getMemoryPieceDesc(piece)}</small>
         </button>
+      `
+    )
+    .join("");
+  const blueprints = MEMORY_BUILD_RULES.recipes
+    .filter((item, index, list) => list.findIndex((entry) => entry.building === item.building) === index)
+    .map(
+      (item) => `
+        <div class="memory-blueprint-card" data-type="${item.building}">
+          <strong>${MEMORY_TYPES[item.building].label}</strong>
+          <small>${item.hint}</small>
+        </div>
       `
     )
     .join("");
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>${UI_TEXT.memory.panelTitle}</h2>
+      <h2>Short-term Fragments</h2>
       <span class="badge">${state.memory.lastSummary}</span>
     </div>
     <div class="selection-summary">
-      <p class="tiny">${UI_TEXT.memory.steps[0]}</p>
-      <p class="tiny">${UI_TEXT.memory.steps[1]}</p>
-      <p class="tiny">${UI_TEXT.memory.steps[2]}</p>
+      <p class="tiny">Unlock a node first, then combine two fragments into one building.</p>
+      <p class="tiny">Courses, homework, routines and random events all change tonight's fragment pool.</p>
+      <p class="tiny">Only completed buildings pay out during night resolution.</p>
     </div>
     <div class="action-row">
       <button class="ghost-button" id="memory-help-btn">${UI_TEXT.memory.helpBtn}</button>
     </div>
+    <div class="memory-blueprint-grid">
+      ${blueprints}
+    </div>
     <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
     <div class="story-card" style="margin-top:16px;">
-      <strong>${UI_TEXT.memory.tipsTitle}</strong>
-      <small>${UI_TEXT.memory.tips[0]}</small>
-      <small>${UI_TEXT.memory.tips[1]}</small>
+      <strong>Current Night State</strong>
+      <small>Completed buildings tonight: ${getMemoryBuiltCount()}. Unused fragments can still be dragged onto valid targets.</small>
+      <small>Focus fragments carry daytime study direction, which is the main bridge between daytime play and night assembly.</small>
     </div>
     <div class="action-row">
-      <button class="primary" id="end-night-btn">${UI_TEXT.memory.endBtn}</button>
+      <button class="primary" id="end-night-btn">End Night</button>
     </div>
   `;
   mainPanel.querySelector("#memory-help-btn").addEventListener("click", () => openInfoModal("memory-rules"));
@@ -1909,6 +1910,7 @@ function renderLeftPanel() {
   }
 
   if (state.mode === "memory") {
+    const builtCount = getMemoryBuiltCount();
     leftPanel.innerHTML = `
       <div class="panel-title">
         <h2>${UI_TEXT.memory.leftTitle}</h2>
@@ -1916,14 +1918,14 @@ function renderLeftPanel() {
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
-          <strong>${UI_TEXT.memory.leftGoalTitle}</strong>
-          <small>${UI_TEXT.memory.leftGoals[0]}</small>
-          <small>${UI_TEXT.memory.leftGoals[1]}</small>
+          <strong>Night Goal</strong>
+          <small>Unlock nodes, combine two fragments into buildings, then connect finished buildings.</small>
+          <small>Different daytime routes now shape the fragment pool, so night assembly is part of the build plan rather than a fixed reward.</small>
         </div>
         <div class="left-info-card">
-          <strong>${UI_TEXT.memory.leftProgressTitle}</strong>
-          <small>${UI_TEXT.memory.leftPlaced(state.memory.placementsToday.length)}</small>
-          <small>${UI_TEXT.memory.leftRemain(state.memory.pieces.filter((piece) => !piece.used).length)}</small>
+          <strong>Night Progress</strong>
+          <small>Placed fragments: ${state.memory.placementsToday.length}</small>
+          <small>Finished buildings: ${builtCount} · Fragments left: ${state.memory.pieces.filter((piece) => !piece.used).length}</small>
         </div>
       </div>
     `;
