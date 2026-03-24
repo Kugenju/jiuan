@@ -32,6 +32,14 @@ const {
   UI_TEXT,
 } = window.GAME_DATA;
 
+const {
+  createGameState,
+  dispatchSessionCommand,
+  applyEffectBundleToRoot,
+  normalizePlayerState,
+  areAllScheduleSlotsFilled,
+} = window.GAME_RUNTIME;
+
 function createRng(seed = 20260313) {
   let value = seed >>> 0;
   return () => {
@@ -251,72 +259,24 @@ function createMemoryBridgeState() {
   return MEMORY_HEX_LAYOUT.edges.map(() => null);
 }
 
-function createState() {
+function createSessionOptions() {
   return {
-    mode: "menu",
-    rng: createRng(),
-    day: 1,
+    createRng,
+    createTodayState,
+    createStoryFlags,
+    createMemoryBoardState,
+    createMemoryBridgeState,
     totalDays: 7,
-    selectedArchetype: ARCHETYPES[0].id,
-    selectedSlot: 0,
-    selectedActivity: ACTIVITIES[0].id,
-    schedule: [null, null, null, null],
-    scene: "menu",
-    scenePulse: 0,
-    progress: 0,
-    resolvingIndex: 0,
-    phaseTimer: 0,
-    resolvingFlow: {
-      phase: "idle",
-      slotIndex: 0,
-      segmentIndex: 0,
-      autoplay: false,
-      autoplayDelay: 1.05,
-      autoplayTimer: 0,
-      storyTrail: [],
-      justAppended: false,
-    },
-    dayModifier: null,
-    currentStory: structuredClone(COPY.initialStory),
-    resources: { coins: 18, insight: 0, spirit: 1 },
-    stats: {
-      intelligence: 4,
-      memory: 4,
-      stamina: 4,
-      inspiration: 4,
-      willpower: 4,
-      charisma: 3,
-      cleanliness: 3,
-      mood: 0,
-      fatigue: 1,
-      selfControl: 3,
-      aura: 1,
-    },
-    skills: { math: 0, sigil: 0, dao: 0, craft: 0 },
-    relationships: { roommate: 0, friend: 0, mentor: 0, counselor: 0 },
-    storyFlags: createStoryFlags(),
-    timeline: [],
-    ui: {
-      statsOpen: false,
-      infoModal: null,
-    },
-    log: [{ day: 0, ...structuredClone(COPY.introLog) }],
-    today: createTodayState(),
-    memory: {
-      board: createMemoryBoardState(),
-      bridges: createMemoryBridgeState(),
-      pieces: [],
-      selectedPiece: null,
-      dragPieceId: null,
-      placementsToday: [],
-      cursor: { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId },
-      lastSummary: COPY.memoryPendingSummary,
-    },
-    summary: null,
+    slotCount: SLOT_NAMES.length,
+    initialArchetypeId: ARCHETYPES[0].id,
+    initialActivityId: ACTIVITIES[0].id,
+    memoryCenterNodeId: MEMORY_HEX_LAYOUT.centerNodeId,
+    copy: COPY,
   };
 }
 
-const state = createState();
+const sessionOptions = createSessionOptions();
+const state = createGameState(sessionOptions);
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -348,25 +308,23 @@ function getMainFocusSkill() {
   return count > 0 ? skill : null;
 }
 
-function applyPack(target, patch) {
-  Object.entries(patch || {}).forEach(([key, value]) => {
-    target[key] += value;
+function runSessionCommand(command) {
+  return dispatchSessionCommand(state, command, {
+    ...sessionOptions,
+    defaultSchedules: DEFAULT_SCHEDULES,
+    schedulePresets: SCHEDULE_PRESETS,
+    defaultArchetypeId: ARCHETYPES[0].id,
+    copy: COPY,
+    uiText: UI_TEXT,
+    getArchetype,
+    activityExists: (activityId) => Boolean(getActivity(activityId)),
+    addLog,
+    sessionOptions,
   });
 }
 
-function defaultScheduleFor(archetypeId) {
-  return [...(DEFAULT_SCHEDULES[archetypeId] || DEFAULT_SCHEDULES.scholar)];
-}
-
 function chooseArchetype(id) {
-  state.selectedArchetype = id;
-  const picked = getArchetype(id);
-  const chosenCopy = COPY.archetypeChosen(picked.name, picked.summary);
-  state.currentStory = {
-    title: chosenCopy.title,
-    body: chosenCopy.body,
-    speaker: UI_TEXT.speakers.survey,
-  };
+  runSessionCommand({ type: "archetype/select", archetypeId: id });
   syncUi();
 }
 
@@ -377,99 +335,39 @@ function changeArchetype(delta) {
 }
 
 function applyArchetypeIfNeeded() {
-  if (state.summary || state.mode !== "menu") {
-    return;
-  }
-  const base = createState();
-  state.resources = structuredClone(base.resources);
-  state.stats = structuredClone(base.stats);
-  state.skills = structuredClone(base.skills);
-  state.relationships = structuredClone(base.relationships);
-  const picked = getArchetype(state.selectedArchetype);
-  applyPack(state.stats, picked.effect.stats);
-  applyPack(state.skills, picked.effect.skills);
-  applyPack(state.resources, picked.effect.resources);
-  applyPack(state.relationships, picked.effect.relationships);
+  runSessionCommand({ type: "archetype/apply" });
 }
 
 function normalizeState() {
-  state.stats.intelligence = clamp(state.stats.intelligence, 0, 12);
-  state.stats.memory = clamp(state.stats.memory, 0, 12);
-  state.stats.stamina = clamp(state.stats.stamina, 0, 12);
-  state.stats.inspiration = clamp(state.stats.inspiration, 0, 12);
-  state.stats.willpower = clamp(state.stats.willpower, 0, 12);
-  state.stats.charisma = clamp(state.stats.charisma, 0, 12);
-  state.stats.cleanliness = clamp(state.stats.cleanliness, 0, 12);
-  state.stats.mood = clamp(state.stats.mood, -5, 5);
-  state.stats.fatigue = clamp(state.stats.fatigue, 0, 10);
-  state.stats.selfControl = clamp(state.stats.selfControl, 0, 10);
-  state.stats.aura = clamp(state.stats.aura, 0, 10);
-  Object.keys(state.skills).forEach((key) => {
-    state.skills[key] = clamp(state.skills[key], 0, 12);
-  });
-  Object.keys(state.relationships).forEach((key) => {
-    state.relationships[key] = clamp(state.relationships[key], -5, 8);
-  });
-  state.resources.coins = clamp(state.resources.coins, 0, 99);
-  state.resources.insight = clamp(state.resources.insight, 0, 99);
-  state.resources.spirit = clamp(state.resources.spirit, 0, 20);
+  normalizePlayerState(state);
 }
 
 function applyEffectBundle(bundle) {
-  if (!bundle) {
-    return;
-  }
-  applyPack(state.stats, bundle.stats);
-  applyPack(state.skills, bundle.skills);
-  applyPack(state.resources, bundle.resources);
-  applyPack(state.relationships, bundle.relationships);
+  applyEffectBundleToRoot(state, bundle);
 }
 
 function startRun() {
-  state.mode = "planning";
-  state.scene = "campus";
-  state.storyFlags.introDone = true;
-  state.schedule = defaultScheduleFor(state.selectedArchetype);
-  state.selectedSlot = 0;
-  state.selectedActivity = state.schedule[0] || ACTIVITIES[0].id;
-  state.currentStory = structuredClone(COPY.runStartStory);
-  addLog(COPY.runStartLog.title, COPY.runStartLog.body);
+  runSessionCommand({ type: "run/start" });
   syncUi();
 }
 
 function fillPreset(presetId) {
-  const preset = SCHEDULE_PRESETS.find((item) => item.id === presetId);
-  if (!preset) {
-    return;
-  }
-  state.schedule = [...preset.schedule];
-  state.selectedActivity = state.schedule[state.selectedSlot] || ACTIVITIES[0].id;
+  runSessionCommand({ type: "schedule/apply-preset", presetId });
   syncUi();
 }
 
 function clearSchedule() {
-  state.schedule = [null, null, null, null];
+  runSessionCommand({ type: "schedule/clear" });
   syncUi();
 }
 
 function setSlot(index) {
-  if (state.mode !== "planning") {
-    return;
-  }
-  state.selectedSlot = clamp(index, 0, SLOT_NAMES.length - 1);
-  state.selectedActivity = state.schedule[state.selectedSlot] || state.selectedActivity || ACTIVITIES[0].id;
+  runSessionCommand({ type: "schedule/set-slot", index });
   syncUi();
 }
 
 function assignActivity(activityId) {
-  if (state.mode !== "planning") {
-    return;
-  }
-  if (!getActivity(activityId)) {
-    return;
-  }
-  state.selectedActivity = activityId;
-  state.schedule[state.selectedSlot] = activityId;
+  runSessionCommand({ type: "schedule/assign-activity", activityId });
   syncUi();
 }
 
@@ -481,7 +379,7 @@ function cycleSelectedActivity(delta) {
 }
 
 function allSlotsFilled() {
-  return state.schedule.every(Boolean);
+  return areAllScheduleSlotsFilled(state.schedule);
 }
 
 function buildDayModifier() {
@@ -1148,7 +1046,7 @@ function endNight() {
   state.day += 1;
   state.mode = "planning";
   state.scene = "campus";
-  state.schedule = defaultScheduleFor(state.selectedArchetype);
+  state.schedule = [...(DEFAULT_SCHEDULES[state.selectedArchetype] || DEFAULT_SCHEDULES.scholar)];
   state.selectedSlot = 0;
   state.selectedActivity = state.schedule[0];
   state.dayModifier = null;
@@ -1191,10 +1089,7 @@ function finishRun() {
 }
 
 function restartGame() {
-  const fresh = createState();
-  Object.keys(fresh).forEach((key) => {
-    state[key] = fresh[key];
-  });
+  runSessionCommand({ type: "run/restart" });
   syncUi();
 }
 
