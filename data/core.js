@@ -1,6 +1,12 @@
 window.GAME_DATA = window.GAME_DATA || {};
 
-const SLOT_NAMES = ["晨课", "午间", "午后", "夜修"];
+const SLOT_NAMES = ["晨起", "晨课", "午间", "午后", "傍晚", "夜修"];
+
+const ACTIVITY_KIND_LABELS = {
+  course: "课程",
+  assignment: "作业",
+  routine: "日常",
+};
 
 const SKILL_LABELS = {
   math: "数术",
@@ -13,12 +19,12 @@ const MEMORY_TYPES = {
   base: {
     label: "灵台基座",
     accent: "#f0c36c",
-    desc: "用于解锁灰色节点，唤醒识海地脉。",
+    desc: "用于解锁灰色节点，唤醒识海中的长期记忆区。",
   },
   ability: {
     label: "术式楼",
     accent: "#89bbff",
-    desc: "建在已解锁空节点，强化当天主修能力。",
+    desc: "建在已解锁的空节点上，强化当天主修方向。",
   },
   boost: {
     label: "养神台",
@@ -28,7 +34,7 @@ const MEMORY_TYPES = {
   reasoning: {
     label: "悟理阁",
     accent: "#ef8f85",
-    desc: "梳理白日所学，提升悟性与推演。",
+    desc: "梳理白天所学，提升悟性与推演能力。",
   },
   bridge: {
     label: "衔接塔",
@@ -60,7 +66,7 @@ const STAT_LABELS = {
 };
 
 const RELATIONSHIP_LABELS = {
-  roommate: "舍友缘",
+  roommate: "舍友线",
   friend: "朋友",
   mentor: "导师",
   counselor: "辅导员",
@@ -74,6 +80,7 @@ const RESOURCE_LABELS = {
 
 Object.assign(window.GAME_DATA, {
   SLOT_NAMES,
+  ACTIVITY_KIND_LABELS,
   SKILL_LABELS,
   MEMORY_TYPES,
   MEMORY_ZONE_META,

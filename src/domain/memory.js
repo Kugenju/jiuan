@@ -17,7 +17,7 @@ function buildMemoryPiecesForState(rootState, getMainFocusSkill) {
     pushPiece("ability");
   }
 
-  if (rootState.today.tones.study >= 2 || rootState.today.actions.includes("homework")) {
+  if (rootState.today.tones.study >= 2 || (rootState.today.kinds?.assignment || 0) > 0) {
     pushPiece("reasoning");
   }
 

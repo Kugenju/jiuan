@@ -15,6 +15,7 @@ const infoModal = document.querySelector("#info-modal");
 
 const {
   SLOT_NAMES,
+  ACTIVITY_KIND_LABELS,
   SKILL_LABELS,
   MEMORY_TYPES,
   MEMORY_ZONE_META,
@@ -26,6 +27,7 @@ const {
   DEFAULT_SCHEDULES,
   SCHEDULE_PRESETS,
   DAY_MODIFIERS,
+  RANDOM_EVENTS,
   STORY_BEATS,
   RANK_THRESHOLDS,
   COPY,
@@ -72,6 +74,20 @@ const {
   buildTextStateExport,
 } = window.GAME_RUNTIME;
 
+const RUNTIME_COPY = {
+  ...COPY,
+  runStartStory: {
+    ...COPY.runStartStory,
+    title: "太学院开学周",
+    body: "先在久安站稳脚跟。安排每天的课程、生活与夜修节奏，白天积累成长，晚上把灵块拼进长期记忆。",
+  },
+  incompleteSchedule: {
+    ...COPY.incompleteSchedule,
+    title: "日程未满",
+    body: "今天的全部时段都需要先安排好。这个 demo 会把课程、作业、生活事件和夜间构筑压进同一天的完整循环里。",
+  },
+};
+
 function createRng(seed = 20260313) {
   let value = seed >>> 0;
   return () => {
@@ -87,6 +103,12 @@ function createTodayState() {
   return {
     focus: { math: 0, sigil: 0, dao: 0, craft: 0 },
     tones: { study: 0, life: 0, body: 0, social: 0 },
+    kinds: { course: 0, assignment: 0, routine: 0 },
+    courseSkills: { math: 0, sigil: 0, dao: 0, craft: 0 },
+    courses: [],
+    assignments: [],
+    randomEvents: [],
+    latestCourseSkill: null,
     actions: [],
   };
 }
@@ -303,7 +325,7 @@ function createSessionOptions() {
     initialArchetypeId: ARCHETYPES[0].id,
     initialActivityId: ACTIVITIES[0].id,
     memoryCenterNodeId: MEMORY_HEX_LAYOUT.centerNodeId,
-    copy: COPY,
+    copy: RUNTIME_COPY,
   };
 }
 
@@ -328,6 +350,38 @@ function getActivity(id) {
   return ACTIVITIES.find((activity) => activity.id === id);
 }
 
+function getActivityKindLabel(activity) {
+  return ACTIVITY_KIND_LABELS[activity?.kind] || "活动";
+}
+
+function getActivityPreferredSlotText(activity) {
+  const preferred = Array.isArray(activity?.preferred) ? activity.preferred : [];
+  if (!preferred.length) {
+    return "任意时段";
+  }
+  return preferred.map((index) => SLOT_NAMES[index]).filter(Boolean).join(" / ");
+}
+
+function getPlanningScheduleFilledText(filled) {
+  return `已填写 ${filled} / ${SLOT_NAMES.length} 个时段。`;
+}
+
+function getPlanningScheduleHintText(filled) {
+  return filled === SLOT_NAMES.length ? "全部时段已排满，可以直接执行当天。" : "先把今天的时段全部填满，再进入白天结算。";
+}
+
+function getFlowHotkeysText() {
+  return `快捷键：1-${SLOT_NAMES.length} 选时段，空格填入活动；白天推进按空格/Enter，P 切自动播放；F 全屏。`;
+}
+
+function getResolvingProgressText(done) {
+  return `已完成 ${done} / ${SLOT_NAMES.length} 个时段。`;
+}
+
+function getPlanningProgressText(filled) {
+  return `已安排 ${filled} / ${SLOT_NAMES.length} 个时段。`;
+}
+
 function getArchetype(id) {
   return ARCHETYPES.find((item) => item.id === id);
 }
@@ -346,7 +400,7 @@ function runSessionCommand(command) {
     defaultSchedules: DEFAULT_SCHEDULES,
     schedulePresets: SCHEDULE_PRESETS,
     defaultArchetypeId: ARCHETYPES[0].id,
-    copy: COPY,
+    copy: RUNTIME_COPY,
     uiText: UI_TEXT,
     getArchetype,
     activityExists: (activityId) => Boolean(getActivity(activityId)),
@@ -360,9 +414,10 @@ function createDayFlowContext() {
     slotNames: SLOT_NAMES,
     skillLabels: SKILL_LABELS,
     uiText: UI_TEXT,
-    copy: COPY,
+    copy: RUNTIME_COPY,
     storyBeats: STORY_BEATS,
     dayModifiers: DAY_MODIFIERS,
+    randomEvents: RANDOM_EVENTS,
     fallbackActivityId: ACTIVITIES[0].id,
     getActivity,
     getMainFocusSkill,
@@ -380,7 +435,7 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     memoryTypes: MEMORY_TYPES,
     skillLabels: SKILL_LABELS,
     uiText: UI_TEXT,
-    copy: COPY,
+    copy: RUNTIME_COPY,
     defaultSchedules: DEFAULT_SCHEDULES,
     defaultArchetypeId: ARCHETYPES[0].id,
     pieceId,
@@ -392,7 +447,7 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
 
 function createSummaryContext() {
   return {
-    copy: COPY,
+    copy: RUNTIME_COPY,
     skillLabels: SKILL_LABELS,
     rankThresholds: RANK_THRESHOLDS,
     addLog,
@@ -530,7 +585,7 @@ function update(dt) {
 
 function applyActivity(activity, slotIndex) {
   return applyActivityToState(state, activity, slotIndex, {
-    copy: COPY,
+    copy: RUNTIME_COPY,
     storyBeats: STORY_BEATS,
     slotNames: SLOT_NAMES,
     skillLabels: SKILL_LABELS,
@@ -688,7 +743,8 @@ function drawPlanningScene() {
 }
 
 function drawResolvingScene() {
-  const current = getActivity(state.schedule[Math.min(state.resolvingIndex, 3)]) || getActivity(state.schedule[3]);
+  const currentIndex = Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+  const current = getActivity(state.schedule[currentIndex]) || ACTIVITIES[0];
   const palettes = {
     lecture: ["#10263d", "#1e4d6f"],
     seminar: ["#1a2543", "#37538b"],
@@ -725,7 +781,7 @@ function drawResolvingScene() {
 
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.font = "24px 'Microsoft YaHei'";
-  ctx.fillText(UI_TEXT.canvas.resolvingSlot(SLOT_NAMES[Math.min(state.resolvingFlow.slotIndex, 3)]), 470, 210);
+  ctx.fillText(UI_TEXT.canvas.resolvingSlot(SLOT_NAMES[currentIndex]), 470, 210);
   ctx.font = "18px 'Microsoft YaHei'";
   wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
   drawCanvasProgress(470, 330, 340, 16, state.progress);
@@ -829,17 +885,20 @@ function drawFloatingCards(labels, y) {
 }
 
 function drawTimelineStrip() {
-  const startX = 82;
+  const gap = 12;
+  const maxWidth = canvas.width - 96;
+  const cardWidth = Math.max(108, Math.min(178, (maxWidth - gap * (SLOT_NAMES.length - 1)) / SLOT_NAMES.length));
+  const startX = (canvas.width - (cardWidth * SLOT_NAMES.length + gap * (SLOT_NAMES.length - 1))) / 2;
   const y = 444;
   SLOT_NAMES.forEach((name, index) => {
-    const x = startX + index * 210;
+    const x = startX + index * (cardWidth + gap);
     ctx.fillStyle = index < state.resolvingIndex ? "rgba(99,211,177,0.35)" : "rgba(255,255,255,0.08)";
     if (state.mode === "planning" && state.selectedSlot === index) {
       ctx.fillStyle = "rgba(137,187,255,0.28)";
     }
-    ctx.fillRect(x, y, 178, 54);
+    ctx.fillRect(x, y, cardWidth, 54);
     ctx.fillStyle = "#edf4ff";
-    ctx.font = "18px 'Microsoft YaHei'";
+    ctx.font = `${SLOT_NAMES.length > 5 ? 16 : 18}px 'Microsoft YaHei'`;
     ctx.fillText(name, x + 16, y + 24);
     const activity = getActivity(state.schedule[index]);
     ctx.fillStyle = "#b8c9dc";
@@ -963,9 +1022,9 @@ function closeInfoModal() {
 function getCurrentPhaseIndex() {
   if (state.mode === "menu") return -1;
   if (state.mode === "planning") return state.selectedSlot;
-  if (state.mode === "resolving") return Math.min(state.resolvingFlow.slotIndex, 3);
-  if (state.mode === "memory") return 3;
-  return 3;
+  if (state.mode === "resolving") return Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+  if (state.mode === "memory") return SLOT_NAMES.length - 1;
+  return SLOT_NAMES.length - 1;
 }
 
 function getQuickStatusCards() {
@@ -1066,7 +1125,7 @@ function syncUi() {
 function renderFlowPanel() {
   const phaseIndex = getCurrentPhaseIndex();
   const quickCards = getQuickStatusCards();
-  const currentActivity = getActivity(state.schedule[Math.max(0, Math.min(state.selectedSlot, 3))]);
+  const currentActivity = getActivity(state.schedule[Math.max(0, Math.min(state.selectedSlot, SLOT_NAMES.length - 1))]);
   const latestTimeline = state.timeline[0];
   flowPanel.innerHTML = `
     <div class="flow-shell">
@@ -1146,7 +1205,7 @@ function renderFlowPanel() {
                     ? UI_TEXT.flow.memoryHint
                     : UI_TEXT.flow.summaryHint
           }</small>
-          <small>${UI_TEXT.flow.hotkeys}</small>
+          <small>${getFlowHotkeysText()}</small>
         </div>
       </div>
       <div class="quick-grid">
@@ -1174,7 +1233,7 @@ function renderPlanningPanel() {
   const activeActivity = getActivity(state.selectedActivity) || ACTIVITIES[0];
   if (state.mode === "resolving") {
     const flow = state.resolvingFlow;
-    const currentIndex = Math.min(flow.slotIndex, 3);
+    const currentIndex = Math.min(flow.slotIndex, SLOT_NAMES.length - 1);
     const currentActivity = getResolvingSlotActivity(currentIndex);
     const nextLabel = flow.phase === "ending" ? UI_TEXT.planning.resolveFinish : UI_TEXT.planning.resolveNext;
     const autoLabel = flow.autoplay ? UI_TEXT.planning.resolveAutoOn : UI_TEXT.planning.resolveAutoOff;
@@ -1248,8 +1307,8 @@ function renderPlanningPanel() {
         </div>
         <div class="story-card">
           <strong>${UI_TEXT.planning.scheduleTitle}</strong>
-          <small>${UI_TEXT.planning.scheduleFilled(filledSlots)}</small>
-          <small>${UI_TEXT.planning.scheduleHint(filledSlots)}</small>
+          <small>${getPlanningScheduleFilledText(filledSlots)}</small>
+          <small>${getPlanningScheduleHintText(filledSlots)}</small>
         </div>
       </div>
       <div class="planning-event-list">
@@ -1258,6 +1317,7 @@ function renderPlanningPanel() {
             (activity) => `
               <button class="activity-card ${state.selectedActivity === activity.id ? "active" : ""}" data-activity="${activity.id}" data-tone="${activity.tone}">
                 <strong>${activity.name}</strong>
+                <small>${getActivityKindLabel(activity)} · 推荐：${getActivityPreferredSlotText(activity)}</small>
                 <small>${activity.summary}</small>
               </button>
             `
@@ -1835,8 +1895,8 @@ function renderLeftPanel() {
           <strong>${state.mode === "resolving" ? UI_TEXT.left.progressTitleResolving : UI_TEXT.left.progressTitlePlanning}</strong>
           <small>${
             state.mode === "resolving"
-              ? UI_TEXT.left.resolvingProgress(Math.min(state.resolvingIndex, 4))
-              : UI_TEXT.left.planningProgress(filledSlots)
+              ? getResolvingProgressText(Math.min(state.resolvingIndex, SLOT_NAMES.length))
+              : getPlanningProgressText(filledSlots)
           }</small>
           <small>${state.mode === "resolving" ? UI_TEXT.left.resolvingProgressHint : UI_TEXT.left.planningProgressHint}</small>
         </div>
@@ -1928,6 +1988,7 @@ document.addEventListener(
   "keydown",
   createKeyboardHandler({
     state,
+    slotCount: SLOT_NAMES.length,
     clamp,
     toggleStatsPanel,
     setSlot,

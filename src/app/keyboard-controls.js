@@ -6,7 +6,8 @@ function createKeyboardHandler(context) {
     const key = event.key.toLowerCase();
     if (
       ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) ||
-      event.key === " "
+      event.key === " " ||
+      (context.state.mode === "planning" && /^[1-9]$/.test(event.key))
     ) {
       event.preventDefault();
     }
@@ -15,8 +16,11 @@ function createKeyboardHandler(context) {
       context.toggleStatsPanel();
     }
 
-    if (event.key >= "1" && event.key <= "4" && context.state.mode === "planning") {
-      context.setSlot(Number(event.key) - 1);
+    if (context.state.mode === "planning" && /^[1-9]$/.test(event.key)) {
+      const index = Number(event.key) - 1;
+      if (index < context.slotCount) {
+        context.setSlot(index);
+      }
     }
 
     if (context.state.mode === "menu") {
@@ -29,8 +33,10 @@ function createKeyboardHandler(context) {
     }
 
     if (context.state.mode === "planning") {
-      if (key === "arrowleft") context.setSlot(context.clamp(context.state.selectedSlot - 1, 0, 3));
-      if (key === "arrowright") context.setSlot(context.clamp(context.state.selectedSlot + 1, 0, 3));
+      if (key === "arrowleft") context.setSlot(context.clamp(context.state.selectedSlot - 1, 0, context.slotCount - 1));
+      if (key === "arrowright") {
+        context.setSlot(context.clamp(context.state.selectedSlot + 1, 0, context.slotCount - 1));
+      }
       if (key === "arrowup") context.cycleSelectedActivity(-1);
       if (key === "arrowdown") context.cycleSelectedActivity(1);
       if (key === " ") context.assignActivity(context.state.selectedActivity);

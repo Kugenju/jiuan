@@ -34,15 +34,113 @@ function consumeDayModifierForActivity(rootState, activity, copy) {
   return copy.dayModifierApplied(rootState.dayModifier.title);
 }
 
-function applyActivityToState(rootState, activity, slotIndex, context) {
-  const isPreferred = activity.preferred.includes(slotIndex);
-  const modifierNote = consumeDayModifierForActivity(rootState, activity, context.copy);
+function ensureTodayCollections(rootState) {
+  rootState.today.kinds = rootState.today.kinds || { course: 0, assignment: 0, routine: 0 };
+  rootState.today.courseSkills = rootState.today.courseSkills || { math: 0, sigil: 0, dao: 0, craft: 0 };
+  rootState.today.courses = rootState.today.courses || [];
+  rootState.today.assignments = rootState.today.assignments || [];
+  rootState.today.randomEvents = rootState.today.randomEvents || [];
+  if (!Object.prototype.hasOwnProperty.call(rootState.today, "latestCourseSkill")) {
+    rootState.today.latestCourseSkill = null;
+  }
+}
 
+function trackActivityOnTodayState(rootState, activity, slotIndex) {
+  ensureTodayCollections(rootState);
   rootState.today.actions.push(activity.id);
   rootState.today.tones[activity.tone] += 1;
+  rootState.today.kinds[activity.kind] += 1;
+
   if (activity.skill) {
     rootState.today.focus[activity.skill] += 1;
   }
+
+  if (activity.kind === "course") {
+    rootState.today.latestCourseSkill = activity.skill || rootState.today.latestCourseSkill;
+    rootState.today.courses.push({
+      id: activity.id,
+      skill: activity.skill || null,
+      slotIndex,
+    });
+    if (activity.skill) {
+      rootState.today.courseSkills[activity.skill] += 1;
+    }
+  }
+
+  if (activity.kind === "assignment") {
+    rootState.today.assignments.push({
+      id: activity.id,
+      slotIndex,
+      linkedSkill: rootState.today.latestCourseSkill,
+    });
+  }
+}
+
+function resolveAssignmentSkill(rootState, activity, context) {
+  const protocol = activity.assignment;
+  if (!protocol) {
+    return null;
+  }
+
+  if (protocol.skillSource === "latestCourseSkill" && rootState.today.latestCourseSkill) {
+    return rootState.today.latestCourseSkill;
+  }
+
+  if (protocol.skillSource === "mainFocusSkill") {
+    const focusSkill = context.getMainFocusSkill();
+    if (focusSkill) {
+      return focusSkill;
+    }
+  }
+
+  if (protocol.fallbackSkillSource === "latestCourseSkill" && rootState.today.latestCourseSkill) {
+    return rootState.today.latestCourseSkill;
+  }
+
+  if (protocol.fallbackSkillSource === "mainFocusSkill") {
+    return context.getMainFocusSkill();
+  }
+
+  return null;
+}
+
+function getActivitySpeaker(activity, uiText) {
+  if (activity.kind === "course") {
+    return uiText.speakers.course;
+  }
+  if (activity.kind === "assignment") {
+    return uiText.speakers.assignment || uiText.speakers.course || uiText.speakers.routine;
+  }
+  return uiText.speakers.routine;
+}
+
+function applyAssignmentProtocol(rootState, activity, context, notes) {
+  if (activity.kind !== "assignment" || !activity.assignment) {
+    return;
+  }
+
+  const skill = resolveAssignmentSkill(rootState, activity, context);
+  if (skill) {
+    rootState.skills[skill] += activity.assignment.amount;
+    notes.push(
+      activity.assignment.noteTemplate
+        .replace("{skill}", context.skillLabels[skill])
+        .replace("{amount}", String(activity.assignment.amount))
+    );
+    return;
+  }
+
+  if (activity.assignment.fallbackNote) {
+    notes.push(activity.assignment.fallbackNote);
+  }
+}
+
+function applyActivityToState(rootState, activity, slotIndex, context) {
+  const preferredSlots = Array.isArray(activity.preferred) ? activity.preferred : [];
+  const isPreferred = preferredSlots.includes(slotIndex);
+  const modifierNote = consumeDayModifierForActivity(rootState, activity, context.copy);
+
+  trackActivityOnTodayState(rootState, activity, slotIndex);
 
   const notes = [];
   if (modifierNote) {
@@ -54,22 +152,14 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
     notes.push(activity.notes.base);
   }
 
-  if (isPreferred) {
+  if (isPreferred && activity.preferredEffects) {
     applyEffectBundleToRoot(rootState, activity.preferredEffects);
     if (activity.notes?.preferred) {
       notes.push(activity.notes.preferred);
     }
   }
 
-  if (activity.special?.type === "focusSkillBonus") {
-    const focus = context.getMainFocusSkill();
-    if (focus) {
-      rootState.skills[focus] += activity.special.amount;
-      notes.push(activity.special.noteTemplate.replace("{skill}", context.skillLabels[focus]));
-    } else if (activity.special.fallbackNote) {
-      notes.push(activity.special.fallbackNote);
-    }
-  }
+  applyAssignmentProtocol(rootState, activity, context, notes);
 
   triggerStoryBeatForActivity(rootState, activity, notes, context.storyBeats);
   normalizePlayerState(rootState);
@@ -79,6 +169,8 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
 
 Object.assign(window.GAME_RUNTIME, {
   findDayModifier,
+  getActivitySpeaker,
+  resolveAssignmentSkill,
   applyActivityToState,
 });
 })();

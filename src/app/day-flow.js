@@ -4,6 +4,8 @@ window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 const {
   findDayModifier,
   applyActivityToState,
+  getActivitySpeaker,
+  triggerRandomEventForTiming,
 } = window.GAME_RUNTIME;
 
 function createResolvingFlowState() {
@@ -75,7 +77,7 @@ function appendResolvingSegmentForSlot(rootState, slotIndex, context) {
   pushResolvingStoryToState(rootState, {
     title: context.copy.dayFlowSegmentTitle(context.slotNames[slotIndex], index, segments.length),
     body: segments[index],
-    speaker: activity.tone === "study" ? context.uiText.speakers.course : context.uiText.speakers.routine,
+    speaker: getActivitySpeaker(activity, context.uiText),
   });
   flow.segmentIndex += 1;
   return true;
@@ -83,7 +85,7 @@ function appendResolvingSegmentForSlot(rootState, slotIndex, context) {
 
 function resolveSlotForFlowState(rootState, slotIndex, context) {
   const activity = getResolvingSlotActivity(rootState, slotIndex, context.getActivity, context.fallbackActivityId);
-  const notes = applyActivityToState(rootState, activity, slotIndex, {
+  const activityNotes = applyActivityToState(rootState, activity, slotIndex, {
     copy: context.copy,
     storyBeats: context.storyBeats,
     slotNames: context.slotNames,
@@ -91,13 +93,27 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
     getMainFocusSkill: context.getMainFocusSkill,
     addLog: context.addLog,
   });
+
+  const randomEvent = triggerRandomEventForTiming(rootState, slotIndex, activity, "after", {
+    randomEvents: context.randomEvents,
+    skillLabels: context.skillLabels,
+    uiText: context.uiText,
+    getMainFocusSkill: context.getMainFocusSkill,
+    addLog: context.addLog,
+  });
+
+  if (randomEvent?.story) {
+    pushResolvingStoryToState(rootState, randomEvent.story);
+  }
+
+  const notes = [activityNotes, randomEvent?.notesText].filter(Boolean).join(" ");
   context.pushTimeline(slotIndex, activity, notes);
 
   const detail = context.copy.dayFlowResult(context.slotNames[slotIndex], activity.name, notes);
   pushResolvingStoryToState(rootState, {
     title: detail.title,
     body: detail.body,
-    speaker: activity.tone === "study" ? context.uiText.speakers.course : context.uiText.speakers.routine,
+    speaker: getActivitySpeaker(activity, context.uiText),
   });
   rootState.resolvingIndex = slotIndex + 1;
   rootState.progress = rootState.resolvingIndex / context.slotNames.length;
