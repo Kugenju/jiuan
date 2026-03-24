@@ -52,6 +52,8 @@ const {
   storyBeatMatchesState,
   triggerStoryBeatForActivity,
   applyActivityToState,
+  computeRankForState,
+  finishRunState,
   buildMemoryPiecesForState,
   normalizeMemoryCursorOnLayout,
   resolveMemoryTargetOnLayout,
@@ -383,6 +385,15 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     getMainFocusSkill,
     addLog,
     finishRun,
+  };
+}
+
+function createSummaryContext() {
+  return {
+    copy: COPY,
+    skillLabels: SKILL_LABELS,
+    rankThresholds: RANK_THRESHOLDS,
+    addLog,
   };
 }
 
@@ -1024,37 +1035,11 @@ function endNight() {
 }
 
 function computeRank() {
-  const score =
-    state.resources.spirit * 1.8 +
-    state.resources.insight * 0.4 +
-    state.stats.aura * 0.8 +
-    state.skills.math +
-    state.skills.sigil +
-    state.skills.dao +
-    state.skills.craft;
-
-  return RANK_THRESHOLDS.find((item) => score >= item.min).label;
+  return computeRankForState(state, RANK_THRESHOLDS);
 }
 
 function finishRun() {
-  const bestSkill = Object.entries(state.skills).sort((a, b) => b[1] - a[1])[0];
-  const rank = computeRank();
-  const majorBeat = state.storyFlags.missingClue ? COPY.summary.clueMajorBeat : COPY.summary.defaultMajorBeat;
-  const body = COPY.summary.body(rank, SKILL_LABELS[bestSkill[0]]);
-
-  state.summary = {
-    rank,
-    bestSkill,
-    majorBeat,
-  };
-  state.mode = "summary";
-  state.scene = "summary";
-  state.currentStory = {
-    title: COPY.summary.title,
-    body,
-    speaker: COPY.summary.speaker,
-  };
-  addLog(COPY.summary.logTitle, `${body} ${majorBeat}`);
+  finishRunState(state, createSummaryContext());
   syncUi();
 }
 
