@@ -38,6 +38,20 @@ const {
   applyEffectBundleToRoot,
   normalizePlayerState,
   areAllScheduleSlotsFilled,
+  getResolvingSlotActivity: getResolvingSlotActivityFromRuntime,
+  pushResolvingStoryToState,
+  resetResolvingStoryTrailOnState,
+  getResolvingSegmentsForSlot,
+  showResolvingLeadForSlot,
+  appendResolvingSegmentForSlot,
+  resolveSlotForFlowState,
+  startDayFlow,
+  advanceResolvingFlowState,
+  toggleResolvingAutoplayOnState,
+  findDayModifier,
+  storyBeatMatchesState,
+  triggerStoryBeatForActivity,
+  applyActivityToState,
 } = window.GAME_RUNTIME;
 
 function createRng(seed = 20260313) {
@@ -323,6 +337,25 @@ function runSessionCommand(command) {
   });
 }
 
+function createDayFlowContext() {
+  return {
+    slotNames: SLOT_NAMES,
+    skillLabels: SKILL_LABELS,
+    uiText: UI_TEXT,
+    copy: COPY,
+    storyBeats: STORY_BEATS,
+    dayModifiers: DAY_MODIFIERS,
+    fallbackActivityId: ACTIVITIES[0].id,
+    getActivity,
+    getMainFocusSkill,
+    addLog,
+    pushTimeline,
+    enterMemoryPhase,
+    createTodayState,
+    areAllScheduleSlotsFilled,
+  };
+}
+
 function chooseArchetype(id) {
   runSessionCommand({ type: "archetype/select", archetypeId: id });
   syncUi();
@@ -383,206 +416,49 @@ function allSlotsFilled() {
 }
 
 function buildDayModifier() {
-  const template = DAY_MODIFIERS.find((modifier) => {
-    const value = state.stats[modifier.condition.stat];
-    if (typeof modifier.condition.min === "number" && value < modifier.condition.min) {
-      return false;
-    }
-    if (typeof modifier.condition.max === "number" && value > modifier.condition.max) {
-      return false;
-    }
-    return true;
-  });
-
-  return template ? { ...structuredClone(template), used: false } : null;
+  return findDayModifier(DAY_MODIFIERS, state);
 }
 
 function startDay() {
-  if (!allSlotsFilled()) {
-    state.currentStory = structuredClone(COPY.incompleteSchedule);
-    syncUi();
-    return;
-  }
-
-  state.today = createTodayState();
-  state.progress = 0;
-  state.resolvingIndex = 0;
-  state.phaseTimer = 0;
-  state.mode = "resolving";
-  state.scene = "resolving";
-  state.resolvingFlow = {
-    phase: "opening",
-    slotIndex: 0,
-    segmentIndex: 0,
-    autoplay: false,
-    autoplayDelay: 1.05,
-    autoplayTimer: 0,
-    storyTrail: [],
-    justAppended: false,
-  };
-  state.dayModifier = buildDayModifier();
-
-  if (state.dayModifier) {
-    const modifierLog = COPY.dayModifierLog(state.day, state.dayModifier);
-    addLog(modifierLog.title, modifierLog.body);
-  }
-
-  const dayStart = COPY.dayStart(state.day);
-  pushResolvingStory(dayStart.title, COPY.dayFlowOpening(state.day), dayStart.speaker);
+  startDayFlow(state, createDayFlowContext());
   syncUi();
 }
 
 function getResolvingSlotActivity(slotIndex) {
-  return getActivity(state.schedule[slotIndex]) || ACTIVITIES[0];
+  return getResolvingSlotActivityFromRuntime(state, slotIndex, getActivity, ACTIVITIES[0].id);
 }
 
 function pushResolvingStory(title, body, speaker) {
-  state.currentStory = { title, body, speaker };
-  if (state.mode !== "resolving") {
-    return;
-  }
-  const flow = state.resolvingFlow;
-  flow.storyTrail.push({ title, body, speaker });
-  flow.storyTrail = flow.storyTrail.slice(-32);
-  flow.justAppended = true;
+  pushResolvingStoryToState(state, { title, body, speaker });
 }
 
 function resetResolvingStoryTrail() {
-  if (state.mode !== "resolving") {
-    return;
-  }
-  state.resolvingFlow.storyTrail = [];
-  state.resolvingFlow.justAppended = false;
+  resetResolvingStoryTrailOnState(state);
 }
 
 function showResolvingLead(slotIndex) {
-  const activity = getResolvingSlotActivity(slotIndex);
-  // New schedule slot starts: reset card trail and append from slot opening.
-  resetResolvingStoryTrail();
-  state.resolvingFlow.segmentIndex = 0;
-  pushResolvingStory(
-    COPY.dayFlowLeadTitle(SLOT_NAMES[slotIndex]),
-    COPY.dayFlowLead(SLOT_NAMES[slotIndex], activity.name),
-    UI_TEXT.speakers.schedule
-  );
+  showResolvingLeadForSlot(state, slotIndex, createDayFlowContext());
 }
 
 function getResolvingSegments(slotIndex) {
-  const activity = getResolvingSlotActivity(slotIndex);
-  const rawSegments = Array.isArray(activity.storySegments) ? activity.storySegments : [];
-  const segments = rawSegments.map((line) => String(line || "").trim()).filter(Boolean);
-  return segments.length ? segments : [COPY.dayFlowPlaceholder(SLOT_NAMES[slotIndex], activity.name)];
+  return getResolvingSegmentsForSlot(state, slotIndex, createDayFlowContext());
 }
 
 function appendResolvingSegment(slotIndex) {
-  const flow = state.resolvingFlow;
-  const activity = getResolvingSlotActivity(slotIndex);
-  const segments = getResolvingSegments(slotIndex);
-  if (flow.segmentIndex >= segments.length) {
-    return false;
-  }
-  const index = flow.segmentIndex;
-  pushResolvingStory(
-    COPY.dayFlowSegmentTitle(SLOT_NAMES[slotIndex], index, segments.length),
-    segments[index],
-    activity.tone === "study" ? UI_TEXT.speakers.course : UI_TEXT.speakers.routine
-  );
-  flow.segmentIndex += 1;
-  return true;
+  return appendResolvingSegmentForSlot(state, slotIndex, createDayFlowContext());
 }
 
 function resolveSlotForFlow(slotIndex) {
-  const activity = getResolvingSlotActivity(slotIndex);
-  const notes = applyActivity(activity, slotIndex);
-  pushTimeline(slotIndex, activity, notes);
-
-  const detail = COPY.dayFlowResult(SLOT_NAMES[slotIndex], activity.name, notes);
-  pushResolvingStory(
-    detail.title,
-    detail.body,
-    activity.tone === "study" ? UI_TEXT.speakers.course : UI_TEXT.speakers.routine
-  );
-  state.resolvingIndex = slotIndex + 1;
-  state.progress = state.resolvingIndex / SLOT_NAMES.length;
+  resolveSlotForFlowState(state, slotIndex, createDayFlowContext());
 }
 
 function advanceResolvingFlow() {
-  if (state.mode !== "resolving") {
-    return;
-  }
-
-  const flow = state.resolvingFlow;
-  flow.autoplayTimer = 0;
-
-  if (flow.phase === "opening") {
-    flow.phase = "lead";
-    showResolvingLead(flow.slotIndex);
-    syncUi();
-    return;
-  }
-
-  if (flow.phase === "lead") {
-    if (appendResolvingSegment(flow.slotIndex)) {
-      flow.phase = "story";
-      syncUi();
-      return;
-    }
-    resolveSlotForFlow(flow.slotIndex);
-    flow.phase = "result";
-    syncUi();
-    return;
-  }
-
-  if (flow.phase === "story") {
-    if (appendResolvingSegment(flow.slotIndex)) {
-      syncUi();
-      return;
-    }
-    resolveSlotForFlow(flow.slotIndex);
-    flow.phase = "result";
-    syncUi();
-    return;
-  }
-
-  if (flow.phase === "result") {
-    if (flow.slotIndex >= SLOT_NAMES.length - 1) {
-      addLog(COPY.dayEndLog.title, COPY.dayEndLog.body);
-      pushResolvingStory(COPY.dayEndLog.title, COPY.dayEndLog.body, UI_TEXT.speakers.schedule);
-      flow.phase = "ending";
-      syncUi();
-      return;
-    }
-
-    pushResolvingStory(
-      COPY.dayFlowOutroTitle(SLOT_NAMES[flow.slotIndex]),
-      COPY.dayFlowOutro(SLOT_NAMES[flow.slotIndex]),
-      UI_TEXT.speakers.schedule
-    );
-    flow.phase = "outro";
-    syncUi();
-    return;
-  }
-
-  if (flow.phase === "outro") {
-    flow.slotIndex += 1;
-    flow.phase = "lead";
-    showResolvingLead(flow.slotIndex);
-    syncUi();
-    return;
-  }
-
-  if (flow.phase === "ending") {
-    enterMemoryPhase();
-  }
+  advanceResolvingFlowState(state, createDayFlowContext());
+  syncUi();
 }
 
 function toggleResolvingAutoplay(force) {
-  if (state.mode !== "resolving") {
-    return;
-  }
-  const flow = state.resolvingFlow;
-  flow.autoplay = typeof force === "boolean" ? force : !flow.autoplay;
-  flow.autoplayTimer = 0;
+  toggleResolvingAutoplayOnState(state, force);
   syncUi();
 }
 
@@ -610,6 +486,15 @@ function consumeDayModifierIfNeeded(activity) {
 }
 
 function applyActivity(activity, slotIndex) {
+  return applyActivityToState(state, activity, slotIndex, {
+    copy: COPY,
+    storyBeats: STORY_BEATS,
+    slotNames: SLOT_NAMES,
+    skillLabels: SKILL_LABELS,
+    getMainFocusSkill,
+    addLog,
+  });
+
   const isPreferred = activity.preferred.includes(slotIndex);
   const modifierNote = consumeDayModifierIfNeeded(activity);
 
@@ -653,6 +538,8 @@ function applyActivity(activity, slotIndex) {
 }
 
 function storyBeatMatches(beat, activity) {
+  return storyBeatMatchesState(state, beat, activity);
+
   const condition = beat.condition || {};
 
   if (condition.activityId && activity.id !== condition.activityId) {
@@ -686,6 +573,9 @@ function storyBeatMatches(beat, activity) {
 }
 
 function triggerStoryBeats(activity, notes) {
+  triggerStoryBeatForActivity(state, activity, notes, STORY_BEATS);
+  return;
+
   const beat = STORY_BEATS.find((item) => !state.storyFlags[item.id] && storyBeatMatches(item, activity));
   if (!beat) {
     return;
