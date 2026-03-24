@@ -52,6 +52,20 @@ const {
   storyBeatMatchesState,
   triggerStoryBeatForActivity,
   applyActivityToState,
+  buildMemoryPiecesForState,
+  normalizeMemoryCursorOnLayout,
+  resolveMemoryTargetOnLayout,
+  isValidNodePlacementForState,
+  isValidBridgePlacementForState,
+  isValidMemoryPlacement,
+  selectMemoryPieceOnState,
+  startMemoryDragOnState,
+  endMemoryDragOnState,
+  moveMemoryCursorOnState,
+  cycleMemoryPieceOnState,
+  enterMemoryPhaseState,
+  placeMemoryPieceInFlow,
+  finishNightFlow,
 } = window.GAME_RUNTIME;
 
 function createRng(seed = 20260313) {
@@ -356,6 +370,22 @@ function createDayFlowContext() {
   };
 }
 
+function createNightFlowContext(pieceId = state.memory.selectedPiece) {
+  return {
+    layout: MEMORY_HEX_LAYOUT,
+    memoryTypes: MEMORY_TYPES,
+    skillLabels: SKILL_LABELS,
+    uiText: UI_TEXT,
+    copy: COPY,
+    defaultSchedules: DEFAULT_SCHEDULES,
+    defaultArchetypeId: ARCHETYPES[0].id,
+    pieceId,
+    getMainFocusSkill,
+    addLog,
+    finishRun,
+  };
+}
+
 function chooseArchetype(id) {
   runSessionCommand({ type: "archetype/select", archetypeId: id });
   syncUi();
@@ -589,6 +619,8 @@ function triggerStoryBeats(activity, notes) {
 }
 
 function buildMemoryPieces() {
+  return buildMemoryPiecesForState(state, getMainFocusSkill);
+
   const pieces = [];
   const pushPiece = (type) => {
     pieces.push({
@@ -627,6 +659,8 @@ function buildMemoryPieces() {
 }
 
 function normalizeMemoryCursor(cursor = state.memory.cursor) {
+  return normalizeMemoryCursorOnLayout(MEMORY_HEX_LAYOUT, cursor);
+
   if (
     cursor &&
     cursor.kind === "node" &&
@@ -649,6 +683,8 @@ function normalizeMemoryCursor(cursor = state.memory.cursor) {
 }
 
 function resolveMemoryTarget(target) {
+  return resolveMemoryTargetOnLayout(MEMORY_HEX_LAYOUT, target);
+
   if (Number.isInteger(target)) {
     if (target >= 0 && target < MEMORY_HEX_LAYOUT.nodes.length) {
       return { kind: "node", id: target };
@@ -678,6 +714,8 @@ function resolveMemoryTarget(target) {
 }
 
 function isValidNodePlacement(type, nodeId) {
+  return isValidNodePlacementForState(state, MEMORY_TYPES, type, nodeId);
+
   const node = state.memory.board[nodeId];
   if (!type || !node || !MEMORY_TYPES[type]) {
     return false;
@@ -695,6 +733,8 @@ function isValidNodePlacement(type, nodeId) {
 }
 
 function isValidBridgePlacement(edgeId) {
+  return isValidBridgePlacementForState(state, MEMORY_HEX_LAYOUT, edgeId);
+
   const edge = MEMORY_HEX_LAYOUT.edges[edgeId];
   if (!edge || state.memory.bridges[edgeId]) {
     return false;
@@ -705,6 +745,8 @@ function isValidBridgePlacement(edgeId) {
 }
 
 function isValidPlacement(type, target) {
+  return isValidMemoryPlacement(state, MEMORY_HEX_LAYOUT, MEMORY_TYPES, type, target);
+
   const resolved = resolveMemoryTarget(target);
   if (!type || !resolved || !MEMORY_TYPES[type]) {
     return false;
@@ -716,6 +758,11 @@ function isValidPlacement(type, target) {
 }
 
 function selectMemoryPiece(pieceId) {
+  if (selectMemoryPieceOnState(state, pieceId)) {
+    syncUi();
+  }
+  return;
+
   if (state.mode !== "memory") {
     return;
   }
@@ -729,6 +776,9 @@ function selectMemoryPiece(pieceId) {
 }
 
 function startMemoryDrag(pieceId) {
+  startMemoryDragOnState(state, pieceId);
+  return;
+
   if (state.mode !== "memory") {
     return;
   }
@@ -741,6 +791,11 @@ function startMemoryDrag(pieceId) {
 }
 
 function endMemoryDrag() {
+  if (endMemoryDragOnState(state)) {
+    syncUi();
+  }
+  return;
+
   if (state.mode !== "memory" || !state.memory.dragPieceId) {
     return;
   }
@@ -749,6 +804,11 @@ function endMemoryDrag() {
 }
 
 function moveMemoryCursor(dx, dy) {
+  if (moveMemoryCursorOnState(state, MEMORY_HEX_LAYOUT, dx, dy)) {
+    syncUi();
+  }
+  return;
+
   if (state.mode !== "memory") {
     return;
   }
@@ -779,6 +839,11 @@ function moveMemoryCursor(dx, dy) {
 }
 
 function cycleMemoryPiece(delta) {
+  if (cycleMemoryPieceOnState(state, delta)) {
+    syncUi();
+  }
+  return;
+
   if (state.mode !== "memory") {
     return;
   }
@@ -799,6 +864,10 @@ function cycleMemoryPiece(delta) {
 }
 
 function enterMemoryPhase() {
+  enterMemoryPhaseState(state, createNightFlowContext());
+  syncUi();
+  return;
+
   state.mode = "memory";
   state.scene = "memory";
   state.memory.pieces = buildMemoryPieces();
@@ -817,6 +886,13 @@ function enterMemoryPhase() {
 }
 
 function placeMemoryPiece(target, pieceId = state.memory.selectedPiece) {
+  const result = placeMemoryPieceInFlow(state, target, createNightFlowContext(pieceId));
+  if (!result.ok && result.reason === "invalid_piece_or_target") {
+    return;
+  }
+  syncUi();
+  return;
+
   const resolvedTarget = resolveMemoryTarget(target ?? state.memory.cursor);
   const piece = state.memory.pieces.find((item) => item.id === pieceId);
   if (!piece || piece.used || !resolvedTarget) {
@@ -864,6 +940,10 @@ function placeMemoryPiece(target, pieceId = state.memory.selectedPiece) {
 }
 
 function endNight() {
+  finishNightFlow(state, createNightFlowContext());
+  syncUi();
+  return;
+
   const placed = state.memory.placementsToday;
   if (!placed.length) {
     state.currentStory = structuredClone(COPY.emptyNightFinish);
