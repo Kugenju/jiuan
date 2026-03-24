@@ -528,18 +528,6 @@ function update(dt) {
   }
 }
 
-function consumeDayModifierIfNeeded(activity) {
-  if (!state.dayModifier || state.dayModifier.used) {
-    return "";
-  }
-  if (state.dayModifier.consumeOn === "study" && activity.tone !== "study") {
-    return "";
-  }
-  applyEffectBundle(state.dayModifier.effect);
-  state.dayModifier.used = true;
-  return COPY.dayModifierApplied(state.dayModifier.title);
-}
-
 function applyActivity(activity, slotIndex) {
   return applyActivityToState(state, activity, slotIndex, {
     copy: COPY,
@@ -549,364 +537,70 @@ function applyActivity(activity, slotIndex) {
     getMainFocusSkill,
     addLog,
   });
-
-  const isPreferred = activity.preferred.includes(slotIndex);
-  const modifierNote = consumeDayModifierIfNeeded(activity);
-
-  state.today.actions.push(activity.id);
-  state.today.tones[activity.tone] += 1;
-  if (activity.skill) {
-    state.today.focus[activity.skill] += 1;
-  }
-
-  const notes = [];
-  if (modifierNote) {
-    notes.push(modifierNote);
-  }
-
-  applyEffectBundle(activity.effects);
-  if (activity.notes?.base) {
-    notes.push(activity.notes.base);
-  }
-
-  if (isPreferred) {
-    applyEffectBundle(activity.preferredEffects);
-    if (activity.notes?.preferred) {
-      notes.push(activity.notes.preferred);
-    }
-  }
-
-  if (activity.special?.type === "focusSkillBonus") {
-    const focus = getMainFocusSkill();
-    if (focus) {
-      state.skills[focus] += activity.special.amount;
-      notes.push(activity.special.noteTemplate.replace("{skill}", SKILL_LABELS[focus]));
-    } else if (activity.special.fallbackNote) {
-      notes.push(activity.special.fallbackNote);
-    }
-  }
-
-  triggerStoryBeats(activity, notes);
-  normalizeState();
-  addLog(`${SLOT_NAMES[slotIndex]} · ${activity.name}`, notes.join(" "));
-  return notes.join(" ");
 }
 
 function storyBeatMatches(beat, activity) {
   return storyBeatMatchesState(state, beat, activity);
-
-  const condition = beat.condition || {};
-
-  if (condition.activityId && activity.id !== condition.activityId) {
-    return false;
-  }
-
-  if (typeof condition.minDay === "number" && state.day < condition.minDay) {
-    return false;
-  }
-
-  if (condition.minSkill && state.skills[condition.minSkill.key] < condition.minSkill.value) {
-    return false;
-  }
-
-  if (condition.maxStat && state.stats[condition.maxStat.key] > condition.maxStat.value) {
-    return false;
-  }
-
-  if (condition.minRelationship && state.relationships[condition.minRelationship.key] < condition.minRelationship.value) {
-    return false;
-  }
-
-  if (condition.combinedSkillsAtLeast) {
-    const total = condition.combinedSkillsAtLeast.keys.reduce((sum, key) => sum + state.skills[key], 0);
-    if (total < condition.combinedSkillsAtLeast.value) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 function triggerStoryBeats(activity, notes) {
   triggerStoryBeatForActivity(state, activity, notes, STORY_BEATS);
-  return;
-
-  const beat = STORY_BEATS.find((item) => !state.storyFlags[item.id] && storyBeatMatches(item, activity));
-  if (!beat) {
-    return;
-  }
-
-  state.storyFlags[beat.id] = true;
-  applyEffectBundle(beat.effect);
-  if (beat.note) {
-    notes.push(beat.note);
-  }
 }
 
 function buildMemoryPieces() {
   return buildMemoryPiecesForState(state, getMainFocusSkill);
-
-  const pieces = [];
-  const pushPiece = (type) => {
-    pieces.push({
-      id: `day-${state.day}-${type}-${pieces.length}`,
-      type,
-      used: false,
-    });
-  };
-
-  pushPiece("base");
-
-  if (getMainFocusSkill() || state.today.tones.study > 0) {
-    pushPiece("ability");
-  }
-
-  if (state.today.tones.study >= 2 || state.today.actions.includes("homework")) {
-    pushPiece("reasoning");
-  }
-
-  if (state.today.tones.life > 0 || state.today.tones.body > 0) {
-    pushPiece("boost");
-  }
-
-  if (
-    state.today.tones.social > 0 ||
-    Object.values(state.today.tones).filter((count) => count > 0).length >= 3
-  ) {
-    pushPiece("bridge");
-  }
-
-  if (pieces.length === 1) {
-    pushPiece("boost");
-  }
-
-  return pieces;
 }
 
 function normalizeMemoryCursor(cursor = state.memory.cursor) {
   return normalizeMemoryCursorOnLayout(MEMORY_HEX_LAYOUT, cursor);
-
-  if (
-    cursor &&
-    cursor.kind === "node" &&
-    Number.isInteger(cursor.id) &&
-    cursor.id >= 0 &&
-    cursor.id < MEMORY_HEX_LAYOUT.nodes.length
-  ) {
-    return { kind: "node", id: cursor.id };
-  }
-  if (
-    cursor &&
-    cursor.kind === "edge" &&
-    Number.isInteger(cursor.id) &&
-    cursor.id >= 0 &&
-    cursor.id < MEMORY_HEX_LAYOUT.edges.length
-  ) {
-    return { kind: "edge", id: cursor.id };
-  }
-  return { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId };
 }
 
 function resolveMemoryTarget(target) {
   return resolveMemoryTargetOnLayout(MEMORY_HEX_LAYOUT, target);
-
-  if (Number.isInteger(target)) {
-    if (target >= 0 && target < MEMORY_HEX_LAYOUT.nodes.length) {
-      return { kind: "node", id: target };
-    }
-    return null;
-  }
-  if (!target || typeof target !== "object") {
-    return null;
-  }
-  if (
-    target.kind === "node" &&
-    Number.isInteger(target.id) &&
-    target.id >= 0 &&
-    target.id < MEMORY_HEX_LAYOUT.nodes.length
-  ) {
-    return { kind: "node", id: target.id };
-  }
-  if (
-    target.kind === "edge" &&
-    Number.isInteger(target.id) &&
-    target.id >= 0 &&
-    target.id < MEMORY_HEX_LAYOUT.edges.length
-  ) {
-    return { kind: "edge", id: target.id };
-  }
-  return null;
 }
 
 function isValidNodePlacement(type, nodeId) {
   return isValidNodePlacementForState(state, MEMORY_TYPES, type, nodeId);
-
-  const node = state.memory.board[nodeId];
-  if (!type || !node || !MEMORY_TYPES[type]) {
-    return false;
-  }
-
-  if (type === "base") {
-    return !node.unlocked && !node.structure;
-  }
-
-  if (type === "bridge") {
-    return false;
-  }
-
-  return node.unlocked && !node.structure;
 }
 
 function isValidBridgePlacement(edgeId) {
   return isValidBridgePlacementForState(state, MEMORY_HEX_LAYOUT, edgeId);
-
-  const edge = MEMORY_HEX_LAYOUT.edges[edgeId];
-  if (!edge || state.memory.bridges[edgeId]) {
-    return false;
-  }
-  const left = state.memory.board[edge.a];
-  const right = state.memory.board[edge.b];
-  return Boolean(left?.structure && right?.structure);
 }
 
 function isValidPlacement(type, target) {
   return isValidMemoryPlacement(state, MEMORY_HEX_LAYOUT, MEMORY_TYPES, type, target);
-
-  const resolved = resolveMemoryTarget(target);
-  if (!type || !resolved || !MEMORY_TYPES[type]) {
-    return false;
-  }
-  if (type === "bridge") {
-    return resolved.kind === "edge" && isValidBridgePlacement(resolved.id);
-  }
-  return resolved.kind === "node" && isValidNodePlacement(type, resolved.id);
 }
 
 function selectMemoryPiece(pieceId) {
   if (selectMemoryPieceOnState(state, pieceId)) {
     syncUi();
   }
-  return;
-
-  if (state.mode !== "memory") {
-    return;
-  }
-  const piece = state.memory.pieces.find((item) => item.id === pieceId && !item.used);
-  if (!piece) {
-    return;
-  }
-  state.memory.selectedPiece = piece.id;
-  state.memory.dragPieceId = null;
-  syncUi();
 }
 
 function startMemoryDrag(pieceId) {
   startMemoryDragOnState(state, pieceId);
-  return;
-
-  if (state.mode !== "memory") {
-    return;
-  }
-  const piece = state.memory.pieces.find((item) => item.id === pieceId && !item.used);
-  if (!piece) {
-    return;
-  }
-  state.memory.selectedPiece = piece.id;
-  state.memory.dragPieceId = piece.id;
 }
 
 function endMemoryDrag() {
   if (endMemoryDragOnState(state)) {
     syncUi();
   }
-  return;
-
-  if (state.mode !== "memory" || !state.memory.dragPieceId) {
-    return;
-  }
-  state.memory.dragPieceId = null;
-  syncUi();
 }
 
 function moveMemoryCursor(dx, dy) {
   if (moveMemoryCursorOnState(state, MEMORY_HEX_LAYOUT, dx, dy)) {
     syncUi();
   }
-  return;
-
-  if (state.mode !== "memory") {
-    return;
-  }
-  const cursor = normalizeMemoryCursor();
-  const currentNodeId =
-    cursor.kind === "node" ? cursor.id : (MEMORY_HEX_LAYOUT.edges[cursor.id]?.a ?? MEMORY_HEX_LAYOUT.centerNodeId);
-  const current = MEMORY_HEX_LAYOUT.nodes[currentNodeId];
-  let bestNodeId = currentNodeId;
-  let bestScore = -Infinity;
-
-  current.neighbors.forEach((neighborId) => {
-    const neighbor = MEMORY_HEX_LAYOUT.nodes[neighborId];
-    const vx = neighbor.ux - current.ux;
-    const vy = neighbor.uy - current.uy;
-    const score = vx * dx + vy * dy;
-    if (score > bestScore) {
-      bestScore = score;
-      bestNodeId = neighborId;
-    }
-  });
-
-  if (bestScore > 0) {
-    state.memory.cursor = { kind: "node", id: bestNodeId };
-  } else {
-    state.memory.cursor = { kind: "node", id: currentNodeId };
-  }
-  syncUi();
 }
 
 function cycleMemoryPiece(delta) {
   if (cycleMemoryPieceOnState(state, delta)) {
     syncUi();
   }
-  return;
-
-  if (state.mode !== "memory") {
-    return;
-  }
-  const available = state.memory.pieces.filter((piece) => !piece.used);
-  if (!available.length) {
-    state.memory.selectedPiece = null;
-    syncUi();
-    return;
-  }
-  const currentIndex = Math.max(
-    0,
-    available.findIndex((piece) => piece.id === state.memory.selectedPiece)
-  );
-  const nextIndex = (currentIndex + delta + available.length) % available.length;
-  state.memory.selectedPiece = available[nextIndex].id;
-  state.memory.dragPieceId = null;
-  syncUi();
 }
 
 function enterMemoryPhase() {
   enterMemoryPhaseState(state, createNightFlowContext());
-  syncUi();
-  return;
-
-  state.mode = "memory";
-  state.scene = "memory";
-  state.memory.pieces = buildMemoryPieces();
-  state.memory.selectedPiece = state.memory.pieces.find((piece) => !piece.used)?.id || null;
-  state.memory.dragPieceId = null;
-  state.memory.placementsToday = [];
-  state.memory.cursor = { kind: "node", id: MEMORY_HEX_LAYOUT.centerNodeId };
-  const story = COPY.memoryStart(state.memory.pieces.length);
-  state.currentStory = {
-    title: story.title,
-    body: story.body,
-    speaker: story.speaker,
-  };
-  state.memory.lastSummary = story.summary;
   syncUi();
 }
 
@@ -916,135 +610,10 @@ function placeMemoryPiece(target, pieceId = state.memory.selectedPiece) {
     return;
   }
   syncUi();
-  return;
-
-  const resolvedTarget = resolveMemoryTarget(target ?? state.memory.cursor);
-  const piece = state.memory.pieces.find((item) => item.id === pieceId);
-  if (!piece || piece.used || !resolvedTarget) {
-    return;
-  }
-  if (!isValidPlacement(piece.type, resolvedTarget)) {
-    state.currentStory = COPY.invalidPlacement(MEMORY_TYPES[piece.type].label);
-    syncUi();
-    return;
-  }
-
-  if (piece.type === "base") {
-    const node = state.memory.board[resolvedTarget.id];
-    node.unlocked = true;
-    node.unlockedDay = state.day;
-    state.memory.placementsToday.push({
-      kind: "node",
-      nodeId: resolvedTarget.id,
-      type: piece.type,
-    });
-  } else if (piece.type === "bridge") {
-    state.memory.bridges[resolvedTarget.id] = { type: "bridge", day: state.day };
-    state.memory.placementsToday.push({
-      kind: "edge",
-      edgeId: resolvedTarget.id,
-      type: piece.type,
-    });
-  } else {
-    const node = state.memory.board[resolvedTarget.id];
-    node.structure = piece.type;
-    node.day = state.day;
-    state.memory.placementsToday.push({
-      kind: "node",
-      nodeId: resolvedTarget.id,
-      type: piece.type,
-    });
-  }
-
-  piece.used = true;
-  state.memory.dragPieceId = null;
-  state.memory.selectedPiece = state.memory.pieces.find((item) => !item.used)?.id || null;
-  state.memory.cursor = resolvedTarget;
-  state.memory.lastSummary = UI_TEXT.memory.placedSummary(state.memory.placementsToday.length, state.memory.pieces.length);
-  syncUi();
 }
 
 function endNight() {
   finishNightFlow(state, createNightFlowContext());
-  syncUi();
-  return;
-
-  const placed = state.memory.placementsToday;
-  if (!placed.length) {
-    state.currentStory = structuredClone(COPY.emptyNightFinish);
-    syncUi();
-    return;
-  }
-
-  const summary = [];
-  let spiritGain = 0;
-  placed.forEach((item) => {
-    if (item.type === "base") {
-      state.resources.insight += 1;
-      summary.push(COPY.nightEffects.baseUnlock);
-    }
-    if (item.type === "ability") {
-      const focus = getMainFocusSkill() || "dao";
-      state.skills[focus] += 1;
-      spiritGain += 1;
-      summary.push(COPY.nightEffects.abilityBoost(SKILL_LABELS[focus]));
-    }
-    if (item.type === "boost") {
-      state.stats.fatigue -= 1;
-      state.stats.mood += 1;
-      summary.push(COPY.nightEffects.boostRecover);
-    }
-    if (item.type === "reasoning") {
-      state.stats.intelligence += 1;
-      state.stats.inspiration += 1;
-      summary.push(COPY.nightEffects.reasoningBreakthrough);
-    }
-    if (item.type === "bridge") {
-      state.stats.memory += 1;
-      summary.push(COPY.nightEffects.bridgeLink);
-    }
-  });
-
-  let resonanceBonus = 0;
-  state.memory.bridges.forEach((bridge, edgeId) => {
-    if (!bridge) {
-      return;
-    }
-    const edge = MEMORY_HEX_LAYOUT.edges[edgeId];
-    const left = state.memory.board[edge.a]?.structure;
-    const right = state.memory.board[edge.b]?.structure;
-    if (
-      (left === "ability" && right === "reasoning") ||
-      (left === "reasoning" && right === "ability")
-    ) {
-      resonanceBonus += 1;
-    }
-  });
-  if (resonanceBonus > 0) {
-    spiritGain += resonanceBonus;
-    summary.push(COPY.nightEffects.resonance(resonanceBonus));
-  }
-
-  state.resources.spirit += spiritGain;
-  normalizeState();
-
-  const summaryText = summary.join(" ");
-  const nightLog = COPY.nightLog(state.day, summaryText);
-  addLog(nightLog.title, nightLog.body);
-  state.currentStory = COPY.nightSummary(state.day, summaryText);
-
-  if (state.day >= state.totalDays) {
-    finishRun();
-    return;
-  }
-
-  state.day += 1;
-  state.mode = "planning";
-  state.scene = "campus";
-  state.schedule = [...(DEFAULT_SCHEDULES[state.selectedArchetype] || DEFAULT_SCHEDULES.scholar)];
-  state.selectedSlot = 0;
-  state.selectedActivity = state.schedule[0];
-  state.dayModifier = null;
   syncUi();
 }
 
