@@ -68,6 +68,7 @@ const {
   enterMemoryPhaseState,
   placeMemoryPieceInFlow,
   finishNightFlow,
+  buildTextStateExport,
 } = window.GAME_RUNTIME;
 
 function createRng(seed = 20260313) {
@@ -394,6 +395,18 @@ function createSummaryContext() {
     skillLabels: SKILL_LABELS,
     rankThresholds: RANK_THRESHOLDS,
     addLog,
+  };
+}
+
+function createStateExportContext() {
+  return {
+    layout: MEMORY_HEX_LAYOUT,
+    slotNames: SLOT_NAMES,
+    uiText: UI_TEXT,
+    getActivity,
+    getResolvingSegments,
+    normalizeMemoryCursor,
+    isValidPlacement,
   };
 }
 
@@ -2328,89 +2341,7 @@ function renderLeftPanel() {
 }
 
 function buildTextState() {
-  const selectedPieceType = state.memory.pieces.find((piece) => piece.id === state.memory.selectedPiece)?.type || null;
-  const cursor = normalizeMemoryCursor(state.memory.cursor);
-  const validNodes =
-    selectedPieceType && selectedPieceType !== "bridge"
-      ? MEMORY_HEX_LAYOUT.nodes
-          .filter((node) => isValidPlacement(selectedPieceType, { kind: "node", id: node.index }))
-          .map((node) => ({ id: node.index, q: node.q, r: node.r }))
-      : [];
-  const validEdges =
-    selectedPieceType === "bridge"
-      ? MEMORY_HEX_LAYOUT.edges
-          .filter((edge) => isValidPlacement("bridge", { kind: "edge", id: edge.index }))
-          .map((edge) => ({ id: edge.index, from: edge.a, to: edge.b }))
-      : [];
-
-  return {
-    coordinate_system: UI_TEXT.stateExport.coordinateSystem,
-    mode: state.mode,
-    day: state.day,
-    selected_archetype: state.selectedArchetype,
-    current_story: state.currentStory.title,
-    schedule: SLOT_NAMES.map((slot, index) => ({
-      slot,
-      action: getActivity(state.schedule[index])?.name || UI_TEXT.common.unassigned,
-      selected: state.selectedSlot === index,
-    })),
-    stats: state.stats,
-    skills: state.skills,
-    resources: state.resources,
-    relationships: state.relationships,
-    ui: state.ui,
-    resolving: {
-      current_slot_index: state.resolvingFlow.slotIndex,
-      phase: state.resolvingFlow.phase,
-      autoplay: state.resolvingFlow.autoplay,
-      progress: Number(state.progress.toFixed(2)),
-      segment_index: state.resolvingFlow.segmentIndex,
-      segment_total: getResolvingSegments(Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1)).length,
-      story_lines: state.resolvingFlow.storyTrail.map((item) => ({
-        title: item.title,
-        body: item.body,
-      })),
-    },
-    memory: {
-      selected_piece: selectedPieceType,
-      cursor:
-        cursor.kind === "node"
-          ? {
-              kind: "node",
-              id: cursor.id,
-              q: MEMORY_HEX_LAYOUT.nodes[cursor.id].q,
-              r: MEMORY_HEX_LAYOUT.nodes[cursor.id].r,
-              zone: MEMORY_HEX_LAYOUT.nodes[cursor.id].zone,
-            }
-          : {
-              kind: "edge",
-              id: cursor.id,
-              from: MEMORY_HEX_LAYOUT.edges[cursor.id].a,
-              to: MEMORY_HEX_LAYOUT.edges[cursor.id].b,
-            },
-      valid_nodes: validNodes,
-      valid_edges: validEdges,
-      pieces_left: state.memory.pieces.filter((piece) => !piece.used).map((piece) => piece.type),
-      board: state.memory.board.map((nodeState, index) => ({
-        index,
-        q: MEMORY_HEX_LAYOUT.nodes[index].q,
-        r: MEMORY_HEX_LAYOUT.nodes[index].r,
-        zone: nodeState.zone,
-        unlocked: nodeState.unlocked,
-        unlocked_day: nodeState.unlockedDay,
-        structure: nodeState.structure,
-        structure_day: nodeState.day,
-      })),
-      bridges: state.memory.bridges.map((bridge, edgeId) => ({
-        edge_id: edgeId,
-        from: MEMORY_HEX_LAYOUT.edges[edgeId].a,
-        to: MEMORY_HEX_LAYOUT.edges[edgeId].b,
-        built: Boolean(bridge),
-        day: bridge?.day ?? null,
-      })),
-    },
-    summary: state.summary,
-  };
+  return buildTextStateExport(state, createStateExportContext());
 }
 
 window.render_game_to_text = () => JSON.stringify(buildTextState());
