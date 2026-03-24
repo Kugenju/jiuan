@@ -4,18 +4,17 @@ window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 function buildTextStateExport(rootState, context) {
   const selectedPiece =
     rootState.memory.pieces.find((piece) => piece.id === rootState.memory.selectedPiece) || null;
-  const selectedPieceType = selectedPiece?.type || null;
   const cursor = context.normalizeMemoryCursor(rootState.memory.cursor);
   const validNodes =
-    selectedPieceType && selectedPieceType !== "link"
+    selectedPiece && selectedPiece.type !== "link"
       ? context.layout.nodes
-          .filter((node) => context.isValidPlacement(selectedPieceType, { kind: "node", id: node.index }))
+          .filter((node) => context.isValidPlacement(selectedPiece, { kind: "node", id: node.index }))
           .map((node) => ({ id: node.index, q: node.q, r: node.r }))
       : [];
   const validEdges =
-    selectedPieceType === "link"
+    selectedPiece?.type === "link"
       ? context.layout.edges
-          .filter((edge) => context.isValidPlacement("link", { kind: "edge", id: edge.index }))
+          .filter((edge) => context.isValidPlacement(selectedPiece, { kind: "edge", id: edge.index }))
           .map((edge) => ({ id: edge.index, from: edge.a, to: edge.b }))
       : [];
 

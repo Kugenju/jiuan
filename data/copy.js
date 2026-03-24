@@ -83,7 +83,7 @@ const COPY = {
   memoryStart(pieceCount) {
     return {
       title: "夜间记忆构筑",
-      body: "把今天积累的灵块塞进长期记忆。灰域节点要先用灵台基座解锁，每个节点只能建一座建筑，衔接塔专门架在节点之间的边位上。",
+      body: "把今天积累的灵块塞进长期记忆。灰域节点要先用灵台锚片解锁，彩色纹片只能落到对应分区或灵台核心，衔接纹片专门架在节点之间的边位上。",
       speaker: "记忆系统",
       summary: `今晚生成 ${pieceCount} 枚灵块。`,
     };
@@ -91,7 +91,7 @@ const COPY = {
   invalidPlacement(typeLabel) {
     return {
       title: "无法落子",
-      body: `${typeLabel}不满足摆放规则。查看右侧规则说明后再试。`,
+      body: `${typeLabel}不满足摆放规则。请确认节点是否已解锁、分区颜色是否匹配，或该位置是否属于可连接边位。`,
       speaker: "记忆系统",
     };
   },
@@ -114,7 +114,7 @@ const COPY = {
     };
   },
   nightEffects: {
-    baseUnlock: "灵台基座点亮了一处灰域节点。",
+    baseUnlock: "灵台锚片点亮了一处灰域节点。",
     abilityBoost(skillLabel) {
       return `术式楼将 ${skillLabel} 的修行又推进了一重。`;
     },

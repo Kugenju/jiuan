@@ -61,6 +61,7 @@ const {
   buildMemoryPiecesForState,
   resolveMemoryStructureFromFragments,
   getZoneSkillKey,
+  resolvePlacementZoneForPiece,
   normalizeMemoryCursorOnLayout,
   resolveMemoryTargetOnLayout,
   isValidNodePlacementForState,
@@ -375,7 +376,7 @@ function getMemoryPieceMeta(piece) {
 function getMemoryPieceLabel(piece) {
   const meta = getMemoryPieceMeta(piece);
   if (!meta) {
-    return piece?.type || "璁板繂纰庣墖";
+    return piece?.type || "记忆碎片";
   }
   if (piece?.type === "focus" && piece.skill) {
     return `${meta.label} · ${SKILL_LABELS[piece.skill]}`;
@@ -389,7 +390,7 @@ function getMemoryPieceDesc(piece) {
     return "";
   }
   if (piece?.type === "focus" && piece.skill) {
-    return `${meta.desc} 鎼哄甫鏂瑰悜锛?${SKILL_LABELS[piece.skill]}銆?`;
+    return `${meta.desc} 当前携带方向：${SKILL_LABELS[piece.skill]}。`;
   }
   return meta.desc;
 }
@@ -400,6 +401,108 @@ function getMemoryNodePrediction(nodeState) {
 
 function getMemoryBuiltCount() {
   return state.memory.placementsToday.filter((item) => Boolean(item.builtStructure)).length;
+}
+
+function getMemoryPieceZone(piece) {
+  return resolvePlacementZoneForPiece(piece, MEMORY_FRAGMENT_TYPES, getMainFocusSkill);
+}
+
+function getMemoryPieceZoneLabel(piece) {
+  const zoneKey = getMemoryPieceZone(piece);
+  return zoneKey ? MEMORY_ZONE_META[zoneKey]?.label || "" : "";
+}
+
+function getMemoryPieceColor(piece) {
+  const zoneKey = getMemoryPieceZone(piece);
+  if (zoneKey && MEMORY_ZONE_META[zoneKey]?.color) {
+    return MEMORY_ZONE_META[zoneKey].color;
+  }
+  return getMemoryPieceMeta(piece)?.accent || "#89bbff";
+}
+
+function getMemoryPieceTooltip(piece) {
+  const zoneLabel = getMemoryPieceZoneLabel(piece);
+  const zoneLine = zoneLabel ? `可放置分区：${zoneLabel} / 灵台核心` : "";
+  return [getMemoryPieceLabel(piece), getMemoryPieceDesc(piece), zoneLine].filter(Boolean).join("\n");
+}
+
+function hashTextSeed(text) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function buildMemoryShardLayout(pieces) {
+  const count = pieces.length;
+  if (!count) {
+    return [];
+  }
+
+  const columns = count <= 2 ? count : 3;
+  const rows = count <= 2 ? 1 : Math.ceil(count / columns);
+  const cellWidth = 100 / columns;
+  const cellHeight = 100 / rows;
+  const cells = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      cells.push({
+        left: (column + 0.5) * cellWidth,
+        top: (row + 0.5) * cellHeight,
+      });
+    }
+  }
+
+  const availableCells = cells.slice();
+  return pieces.map((piece, index) => {
+    const hash = hashTextSeed(`${piece.id}:${piece.type}:${index}:${count}`);
+    const slotIndex = availableCells.length ? hash % availableCells.length : 0;
+    const base = availableCells.splice(slotIndex, 1)[0] || cells[index % cells.length];
+    const jitterLimitX = columns >= 4 ? 2.8 : 4.2;
+    const jitterLimitY = rows >= 4 ? 2.4 : 3.6;
+    const xJitter = ((hash >>> 3) % 1000) / 1000 * jitterLimitX * 2 - jitterLimitX;
+    const yJitter = ((hash >>> 11) % 1000) / 1000 * jitterLimitY * 2 - jitterLimitY;
+    const rotate = ((hash >>> 19) % 22) - 11;
+    const scale = (getMemoryPieceMeta(piece)?.scale || 1) * (0.95 + (((hash >>> 24) % 8) / 100));
+    return {
+      left: Number(Math.max(12, Math.min(88, base.left + xJitter)).toFixed(2)),
+      top: Number(Math.max(14, Math.min(86, base.top + yJitter)).toFixed(2)),
+      rotate,
+      scale: Number(scale.toFixed(2)),
+      zIndex: 2 + index,
+    };
+  });
+}
+
+function renderMemoryShardField() {
+  const layout = buildMemoryShardLayout(state.memory.pieces);
+  return state.memory.pieces
+    .map((piece, index) => {
+      const meta = getMemoryPieceMeta(piece);
+      const scatter = layout[index];
+      const zoneLabel = getMemoryPieceZoneLabel(piece);
+      const skillBadge = piece.type === "focus" && piece.skill ? `<span class="memory-shard-badge">${SKILL_LABELS[piece.skill]}</span>` : "";
+      return `
+        <button
+          class="memory-shard ${piece.id === state.memory.selectedPiece ? "active" : ""} ${piece.id === state.memory.dragPieceId ? "dragging" : ""} ${piece.used ? "disabled" : ""}"
+          type="button"
+          data-piece="${piece.id}"
+          data-type="${piece.type}"
+          draggable="${piece.used ? "false" : "true"}"
+          ${piece.used ? "disabled" : ""}
+          style="left:${scatter.left}%;top:${scatter.top}%;transform:translate(-50%, -50%) rotate(${scatter.rotate}deg) scale(${scatter.scale});--shard-color:${getMemoryPieceColor(piece)};--shard-shape:${meta?.shape || "polygon(24% 6%, 76% 6%, 100% 50%, 76% 94%, 24% 94%, 0% 50%)"};z-index:${piece.id === state.memory.selectedPiece || piece.id === state.memory.dragPieceId ? 30 + index : scatter.zIndex};"
+          title="${getMemoryPieceTooltip(piece)}"
+          aria-label="${getMemoryPieceLabel(piece)}"
+        >
+          <span class="memory-shard-shape" aria-hidden="true"></span>
+          ${zoneLabel ? `<span class="memory-shard-zone">${zoneLabel.replace("区", "")}</span>` : ""}
+          ${skillBadge}
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function getPlanningScheduleFilledText(filled) {
@@ -656,16 +759,24 @@ function resolveMemoryTarget(target) {
   return resolveMemoryTargetOnLayout(MEMORY_HEX_LAYOUT, target);
 }
 
-function isValidNodePlacement(type, nodeId) {
-  return isValidNodePlacementForState(state, MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES, type, nodeId);
+function isValidNodePlacement(piece, nodeId) {
+  return isValidNodePlacementForState(state, MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES, piece, nodeId, getMainFocusSkill);
 }
 
 function isValidBridgePlacement(edgeId) {
   return isValidBridgePlacementForState(state, MEMORY_HEX_LAYOUT, edgeId);
 }
 
-function isValidPlacement(type, target) {
-  return isValidMemoryPlacement(state, MEMORY_HEX_LAYOUT, MEMORY_FRAGMENT_TYPES, MEMORY_BUILD_RULES, type, target);
+function isValidPlacement(piece, target) {
+  return isValidMemoryPlacement(
+    state,
+    MEMORY_HEX_LAYOUT,
+    MEMORY_FRAGMENT_TYPES,
+    MEMORY_BUILD_RULES,
+    piece,
+    target,
+    getMainFocusSkill
+  );
 }
 
 function selectMemoryPiece(pieceId) {
@@ -1428,7 +1539,7 @@ function renderMemoryStage() {
   const edgeLines = MEMORY_HEX_LAYOUT.edges
     .map((edge) => {
       const occupied = Boolean(state.memory.bridges[edge.index]);
-      const valid = activePiece?.type === "link" && isValidPlacement("link", { kind: "edge", id: edge.index });
+      const valid = activePiece?.type === "link" && isValidPlacement(activePiece, { kind: "edge", id: edge.index });
       const active = cursor.kind === "edge" && cursor.id === edge.index;
       const connectable = isValidBridgePlacement(edge.index);
       return `
@@ -1473,7 +1584,7 @@ function renderMemoryStage() {
   const edgeButtons = MEMORY_HEX_LAYOUT.edges
     .map((edge) => {
       const occupied = Boolean(state.memory.bridges[edge.index]);
-      const valid = activePiece?.type === "link" && isValidPlacement("link", { kind: "edge", id: edge.index });
+      const valid = activePiece?.type === "link" && isValidPlacement(activePiece, { kind: "edge", id: edge.index });
       const active = cursor.kind === "edge" && cursor.id === edge.index;
       return `
         <button
@@ -1494,21 +1605,21 @@ function renderMemoryStage() {
       const nodeState = state.memory.board[node.index];
       const structureType = nodeState.structure;
       const prediction = getMemoryNodePrediction(nodeState);
-      const valid = activePiece?.type ? isValidPlacement(activePiece.type, { kind: "node", id: node.index }) : false;
+      const valid = activePiece?.type ? isValidPlacement(activePiece, { kind: "node", id: node.index }) : false;
       const active = cursor.kind === "node" && cursor.id === node.index;
       const title = !nodeState.unlocked
         ? UI_TEXT.memory.nodeLockedTitle
         : structureType
-          ? `${MEMORY_TYPES[structureType].label}${nodeState.structureSkill ? ` ? ${SKILL_LABELS[nodeState.structureSkill]}` : ""}`
+          ? `${MEMORY_TYPES[structureType].label}${nodeState.structureSkill ? ` · ${SKILL_LABELS[nodeState.structureSkill]}` : ""}`
           : nodeState.fragments.length
-            ? `Assembling: ${nodeState.fragments.map(getMemoryPieceLabel).join(" + ")}`
+            ? `正在拼装：${nodeState.fragments.map(getMemoryPieceLabel).join(" + ")}`
             : UI_TEXT.memory.nodeUnlockedTitle;
       const desc = !nodeState.unlocked
         ? UI_TEXT.memory.nodeLockedDesc
         : structureType
           ? UI_TEXT.memory.nodeBuiltDesc(nodeState.day)
           : nodeState.fragments.length
-            ? `Inserted ${nodeState.fragments.length} / ${MEMORY_BUILD_RULES.nodeCapacity}. Predicted result: ${MEMORY_TYPES[prediction?.building || "reasoning"].label}.`
+            ? `已嵌入 ${nodeState.fragments.length} / ${MEMORY_BUILD_RULES.nodeCapacity} 枚，预计定型为 ${MEMORY_TYPES[prediction?.building || "reasoning"].label}。`
             : UI_TEXT.memory.nodeEmptyDesc;
       const zoneLabel = MEMORY_ZONE_META[node.zone].label;
       return `
@@ -1537,10 +1648,10 @@ function renderMemoryStage() {
     <div class="memory-stage-shell">
       <div class="memory-stage-header">
         <div>
-          <h2>Memory Board</h2>
-          <p>Daytime events are distilled into fragments at night. Unlock a node with an anchor fragment, combine two fragments on the same node into a finished building, then connect finished buildings with a link fragment.</p>
+          <h2>${UI_TEXT.memory.stageTitle}</h2>
+          <p>${UI_TEXT.memory.stageDesc}</p>
         </div>
-        <span class="badge">${activePiece ? `Current fragment: ${getMemoryPieceLabel(activePiece)}` : "Select a fragment from the tray"}</span>
+        <span class="badge">${activePiece ? UI_TEXT.memory.stageCurrentPiece(getMemoryPieceLabel(activePiece)) : UI_TEXT.memory.stageSelectHint}</span>
       </div>
       <div class="memory-zone-legend">
         ${zoneLegend}
@@ -1579,7 +1690,7 @@ function renderMemoryStage() {
       element.addEventListener("dragover", (event) => {
         const draggingPiece =
           state.memory.pieces.find((piece) => piece.id === state.memory.dragPieceId && !piece.used) || null;
-        if (!draggingPiece || !isValidPlacement(draggingPiece.type, target)) {
+        if (!draggingPiece || !isValidPlacement(draggingPiece, target)) {
           return;
         }
         event.preventDefault();
@@ -1600,7 +1711,7 @@ function renderMemoryStage() {
 
       element.addEventListener("click", () => {
         state.memory.cursor = target;
-        if (activePiece && isValidPlacement(activePiece.type, target)) {
+        if (activePiece && isValidPlacement(activePiece, target)) {
           placeMemoryPiece(target, activePiece.id);
         } else {
           syncUi();
@@ -1769,22 +1880,7 @@ function renderLogPanel() {
 }
 
 function renderMemoryPanelCompact() {
-  const pieces = state.memory.pieces
-    .map(
-      (piece) => `
-        <button
-          class="memory-token ${piece.id === state.memory.selectedPiece ? "active" : ""} ${piece.id === state.memory.dragPieceId ? "dragging" : ""} ${piece.used ? "disabled" : ""}"
-          data-piece="${piece.id}"
-          data-type="${piece.type}"
-          draggable="${piece.used ? "false" : "true"}"
-          ${piece.used ? "disabled" : ""}
-        >
-          <strong>${getMemoryPieceLabel(piece)}</strong>
-          <small>${getMemoryPieceDesc(piece)}</small>
-        </button>
-      `
-    )
-    .join("");
+  const pieces = renderMemoryShardField();
   const blueprints = MEMORY_BUILD_RULES.recipes
     .filter((item, index, list) => list.findIndex((entry) => entry.building === item.building) === index)
     .map(
@@ -1798,13 +1894,13 @@ function renderMemoryPanelCompact() {
     .join("");
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>Short-term Fragments</h2>
+      <h2>短期灵块</h2>
       <span class="badge">${state.memory.lastSummary}</span>
     </div>
     <div class="selection-summary">
-      <p class="tiny">Unlock a node first, then combine two fragments into one building.</p>
-      <p class="tiny">Courses, homework, routines and random events all change tonight's fragment pool.</p>
-      <p class="tiny">Only completed buildings pay out during night resolution.</p>
+      <p class="tiny">先用锚片点亮节点，再把两枚灵块拼成一处建筑。</p>
+      <p class="tiny">不同形状对应不同灵块类型；彩色纹片的颜色直接对应可落下的分区。</p>
+      <p class="tiny">只有完整建成的建筑会在夜间结算时生效。</p>
     </div>
     <div class="action-row">
       <button class="ghost-button" id="memory-help-btn">${UI_TEXT.memory.helpBtn}</button>
@@ -1812,14 +1908,14 @@ function renderMemoryPanelCompact() {
     <div class="memory-blueprint-grid">
       ${blueprints}
     </div>
-    <div class="memory-pieces" style="margin-top:16px;">${pieces}</div>
+    <div class="memory-fragment-field" style="margin-top:16px;">${pieces}</div>
     <div class="story-card" style="margin-top:16px;">
-      <strong>Current Night State</strong>
-      <small>Completed buildings tonight: ${getMemoryBuiltCount()}. Unused fragments can still be dragged onto valid targets.</small>
-      <small>Focus fragments carry daytime study direction, which is the main bridge between daytime play and night assembly.</small>
+      <strong>当前夜修进度</strong>
+      <small>今夜已完成建筑 ${getMemoryBuiltCount()} 处。未消耗的灵块仍可继续拖到合法目标上。</small>
+      <small>专注纹片会继承白天主修方向。前几天还会额外提高衔接纹片与灵台锚片的出现权重，帮助更快开盘。</small>
     </div>
     <div class="action-row">
-      <button class="primary" id="end-night-btn">End Night</button>
+      <button class="primary" id="end-night-btn">结束夜修</button>
     </div>
   `;
   mainPanel.querySelector("#memory-help-btn").addEventListener("click", () => openInfoModal("memory-rules"));
@@ -1918,14 +2014,14 @@ function renderLeftPanel() {
       </div>
       <div class="left-info-grid">
         <div class="left-info-card">
-          <strong>Night Goal</strong>
-          <small>Unlock nodes, combine two fragments into buildings, then connect finished buildings.</small>
-          <small>Different daytime routes now shape the fragment pool, so night assembly is part of the build plan rather than a fixed reward.</small>
+          <strong>${UI_TEXT.memory.leftGoalTitle}</strong>
+          <small>${UI_TEXT.memory.leftGoals[0]}</small>
+          <small>${UI_TEXT.memory.leftGoals[1]}</small>
         </div>
         <div class="left-info-card">
-          <strong>Night Progress</strong>
-          <small>Placed fragments: ${state.memory.placementsToday.length}</small>
-          <small>Finished buildings: ${builtCount} · Fragments left: ${state.memory.pieces.filter((piece) => !piece.used).length}</small>
+          <strong>${UI_TEXT.memory.leftProgressTitle}</strong>
+          <small>${UI_TEXT.memory.leftPlaced(state.memory.placementsToday.length)}</small>
+          <small>已定型建筑：${builtCount} · ${UI_TEXT.memory.leftRemain(state.memory.pieces.filter((piece) => !piece.used).length)}</small>
         </div>
       </div>
     `;

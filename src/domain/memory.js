@@ -9,6 +9,17 @@ function getZoneSkillKey(zone) {
   return null;
 }
 
+function resolvePlacementZoneForPiece(piece, fragmentTypes, getMainFocusSkill) {
+  if (!piece || !fragmentTypes[piece.type]) {
+    return null;
+  }
+  const meta = fragmentTypes[piece.type];
+  if (meta.zoneFromSkill) {
+    return piece.skill || getMainFocusSkill?.() || meta.fallbackZone || null;
+  }
+  return meta.zone || null;
+}
+
 function buildMemoryPieceId(rootState, type, index) {
   return `day-${rootState.day}-${type}-${index}`;
 }
@@ -74,6 +85,7 @@ function buildFocusSkillWeights(rootState, fallbackSkill) {
 
 function buildRandomFragmentWeights(rootState) {
   const weights = {
+    anchor: 0.08,
     schema: 1,
     focus: 1,
     echo: 1,
@@ -92,6 +104,13 @@ function buildRandomFragmentWeights(rootState) {
   }
   if (Object.values(rootState.today.tones).filter((count) => count > 0).length >= 3) {
     weights.link += 1.2;
+  }
+  if (rootState.day <= 3) {
+    weights.anchor += 0.95;
+    weights.link += 1.15;
+  } else if (rootState.day <= 5) {
+    weights.anchor += 0.35;
+    weights.link += 0.45;
   }
 
   return weights;
@@ -244,8 +263,9 @@ function resolveStructureSkillForNode(nodeState, getMainFocusSkill) {
   return getZoneSkillKey(nodeState.zone) || getMainFocusSkill?.() || null;
 }
 
-function isValidNodePlacementForState(rootState, fragmentTypes, buildRules, type, nodeId) {
+function isValidNodePlacementForState(rootState, fragmentTypes, buildRules, piece, nodeId, getMainFocusSkill) {
   const node = rootState.memory.board[nodeId];
+  const type = typeof piece === "string" ? piece : piece?.type;
   const meta = fragmentTypes[type];
   if (!type || !node || !meta) {
     return false;
@@ -256,6 +276,16 @@ function isValidNodePlacementForState(rootState, fragmentTypes, buildRules, type
   }
 
   if (meta.slot === "edge") {
+    return false;
+  }
+
+  const requiredZone = resolvePlacementZoneForPiece(
+    typeof piece === "string" ? { type } : piece,
+    fragmentTypes,
+    getMainFocusSkill
+  );
+
+  if (requiredZone && node.zone !== "core" && node.zone !== requiredZone) {
     return false;
   }
 
@@ -272,8 +302,9 @@ function isValidBridgePlacementForState(rootState, layout, edgeId) {
   return Boolean(left?.structure && right?.structure);
 }
 
-function isValidMemoryPlacement(rootState, layout, fragmentTypes, buildRules, type, target) {
+function isValidMemoryPlacement(rootState, layout, fragmentTypes, buildRules, piece, target, getMainFocusSkill) {
   const resolved = resolveMemoryTargetOnLayout(layout, target);
+  const type = typeof piece === "string" ? piece : piece?.type;
   const meta = fragmentTypes[type];
   if (!type || !resolved || !meta) {
     return false;
@@ -281,7 +312,10 @@ function isValidMemoryPlacement(rootState, layout, fragmentTypes, buildRules, ty
   if (meta.slot === "edge") {
     return resolved.kind === "edge" && isValidBridgePlacementForState(rootState, layout, resolved.id);
   }
-  return resolved.kind === "node" && isValidNodePlacementForState(rootState, fragmentTypes, buildRules, type, resolved.id);
+  return (
+    resolved.kind === "node" &&
+    isValidNodePlacementForState(rootState, fragmentTypes, buildRules, piece, resolved.id, getMainFocusSkill)
+  );
 }
 
 function selectMemoryPieceOnState(rootState, pieceId) {
@@ -372,7 +406,17 @@ function placeMemoryPieceOnState(rootState, target, context) {
   if (!piece || piece.used || !resolvedTarget || !pieceMeta) {
     return { ok: false, reason: "invalid_piece_or_target" };
   }
-  if (!isValidMemoryPlacement(rootState, context.layout, context.memoryFragmentTypes, context.memoryBuildRules, piece.type, resolvedTarget)) {
+  if (
+    !isValidMemoryPlacement(
+      rootState,
+      context.layout,
+      context.memoryFragmentTypes,
+      context.memoryBuildRules,
+      piece,
+      resolvedTarget,
+      context.getMainFocusSkill
+    )
+  ) {
     return { ok: false, reason: "invalid_placement", invalidLabel: pieceMeta.label };
   }
 
@@ -437,6 +481,7 @@ Object.assign(window.GAME_RUNTIME, {
   resolveMemoryTargetOnLayout,
   resolveMemoryStructureFromFragments,
   getZoneSkillKey,
+  resolvePlacementZoneForPiece,
   isValidNodePlacementForState,
   isValidBridgePlacementForState,
   isValidMemoryPlacement,

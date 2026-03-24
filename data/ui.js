@@ -52,7 +52,7 @@ const UI_TEXT = {
       return `当前时段：${slotName}`;
     },
     memoryTitle: "夜间记忆建构",
-    memorySubtitle: "先以灵台基座解锁灰域节点，再于节点建塔，以衔接塔贯通边位。",
+    memorySubtitle: "先以灵台锚片解锁灰域节点，再于节点建塔，以衔接塔贯通边位。",
     summaryTitle: "第一周结算",
     summarySubtitle: "从策划案中抽出的核心循环已经跑完一周。",
     summaryBest(skillLabel, level) {
@@ -66,10 +66,10 @@ const UI_TEXT = {
   ],
   infoModal: {
     memoryTitle: "灵块类型",
-    memoryIntro: "夜间为六边形长期记忆区。灰域节点需先投放灵台基座解锁，每个节点仅可建一座建筑。",
+    memoryIntro: "夜间为六边形长期记忆区。灰域节点需先投放灵台锚片解锁，每个节点仅可建一座建筑。",
     memoryRulesTitle: "放置规则",
     memoryRulesBody:
-      "灵台基座只能用于解锁灰域节点。术式楼、养神台、悟理阁只能建在已解锁且空置的节点。衔接塔属于边位建筑，仅可架设在两端节点都已有建筑的相邻边上。",
+      "灵台锚片只能用于解锁灰域节点。彩色纹片只能落在与自身颜色对应的分区，灵台核心可容纳任意彩色纹片。衔接纹片属于边位建筑，仅可架设在两端节点都已有建筑的相邻边上。",
     progressTitle: "日程进度",
     feedbackTitle: "最近反馈",
   },
@@ -123,7 +123,7 @@ const UI_TEXT = {
   memory: {
     stageTitle: "长期记忆区",
     stageDesc:
-      "六边形节点按数术、符法、道法、炼器分区。灰域节点需先投放灵台基座解锁，每个节点只可建一座建筑，衔接塔架设在节点之间的边位。",
+      "六边形节点按数术、符法、道法、炼器分区。彩色纹片只能落入对应分区，灵台核心可承接任意彩色纹片；灰域节点需先投放灵台锚片解锁，衔接纹片则架设在节点之间的边位。",
     stageSelectHint: "右栏选择一枚灵块",
     stageCurrentPiece(label) {
       return `当前灵块：${label}`;
@@ -136,7 +136,7 @@ const UI_TEXT = {
     },
     nodeLockedTitle: "灰域节点",
     nodeUnlockedTitle: "已解锁空位",
-    nodeLockedDesc: "投放灵台基座可解锁",
+    nodeLockedDesc: "投放灵台锚片可解锁",
     nodeEmptyDesc: "可建一座建筑",
     nodeBuiltDesc(day) {
       return `第 ${day} 天建成`;
@@ -148,8 +148,8 @@ const UI_TEXT = {
     steps: ["步骤 1：抓起一枚灵块。", "步骤 2：拖到左侧六边节点或边位。", "步骤 3：至少放一块，再结束夜晚。"],
     tipsTitle: "当前放置提示",
     tips: [
-      "右栏现在只保留灵块托盘和操作按钮。块类型与规则说明已移到浮窗。",
-      "节点需先解锁再建造，衔接塔请点击两节点之间的边位。",
+      "右栏只保留灵块托盘和操作按钮，悬浮灵块可查看文字说明。",
+      "彩色纹片只能落在对应颜色分区，灵台核心除外；衔接纹片请点击两节点之间的边位。",
     ],
     helpBtn: "查看灵块类型",
     endBtn: "结束夜晚",
@@ -157,7 +157,7 @@ const UI_TEXT = {
     leftGoalTitle: "目标",
     leftGoals: [
       "将右侧灵块放入左侧六边形长期记忆区。",
-      "先用灵台基座解锁灰域节点，再建造术式楼/养神台/悟理阁，最后用衔接塔打通边位。",
+      "先用灵台锚片解锁灰域节点，再建造术式楼/养神台/悟理阁，最后用衔接塔打通边位。",
     ],
     leftProgressTitle: "今夜进度",
     leftPlaced(count) {
