@@ -8,8 +8,16 @@ const {
 } = window.GAME_RUNTIME;
 const {
   createEmptySchedule,
-  cloneDefaultSchedule,
+  createEmptyWeeklyTimetable,
+  createEmptyScheduleLocks,
+  cloneCourseSelectionBlocks,
+  buildWeeklyTimetableFromCourseSelection,
+  isCourseSelectionComplete,
+  pickCourseForBlock,
+  buildDailyScheduleFromWeeklyTimetable,
+  buildScheduleLocksFromWeeklyTimetable,
   findSchedulePreset,
+  findNextEditableSlot,
   setSelectedPlanningSlot,
   assignPlanningActivity,
   applySchedulePreset,
@@ -28,6 +36,11 @@ function createGameState(options) {
     selectedSlot: 0,
     selectedActivity: options.initialActivityId,
     schedule: createEmptySchedule(options.slotCount),
+    scheduleLocks: createEmptyScheduleLocks(options.slotCount),
+    weeklyTimetable: createEmptyWeeklyTimetable(options.totalDays, options.slotCount),
+    courseSelection: {
+      blocks: [],
+    },
     scene: "menu",
     scenePulse: 0,
     progress: 0,
@@ -106,25 +119,55 @@ function dispatchSessionCommand(rootState, command, context) {
     }
 
     case "run/start": {
-      rootState.mode = "planning";
-      rootState.scene = "campus";
+      rootState.mode = "course_selection";
+      rootState.scene = "course_selection";
       rootState.storyFlags.introDone = true;
-      rootState.schedule = cloneDefaultSchedule(
-        context.defaultSchedules,
+      rootState.courseSelection.blocks = cloneCourseSelectionBlocks(
+        context.courseSelectionBlocks,
         rootState.selectedArchetype,
         context.defaultArchetypeId
       );
-      rootState.selectedSlot = 0;
-      rootState.selectedActivity = rootState.schedule[0] || context.initialActivityId;
+      rootState.weeklyTimetable = buildWeeklyTimetableFromCourseSelection(
+        rootState.courseSelection.blocks,
+        context.totalDays,
+        context.slotCount
+      );
+      rootState.schedule = createEmptySchedule(context.slotCount);
+      rootState.scheduleLocks = createEmptyScheduleLocks(context.slotCount);
       rootState.currentStory = structuredClone(context.copy.runStartStory);
       context.addLog(context.copy.runStartLog.title, context.copy.runStartLog.body);
+      return true;
+    }
+
+    case "course/select":
+      return pickCourseForBlock(rootState, command.blockId, command.courseId, {
+        getActivity: context.getActivity,
+        slotCount: context.slotCount,
+      });
+
+    case "course/confirm": {
+      if (rootState.mode !== "course_selection" || !isCourseSelectionComplete(rootState.courseSelection.blocks)) {
+        return false;
+      }
+      rootState.mode = "planning";
+      rootState.scene = "campus";
+      rootState.weeklyTimetable = buildWeeklyTimetableFromCourseSelection(
+        rootState.courseSelection.blocks,
+        context.totalDays,
+        context.slotCount
+      );
+      rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
+      rootState.selectedActivity = context.initialActivityId;
+      rootState.currentStory = structuredClone(context.copy.runStartStory);
       return true;
     }
 
     case "schedule/apply-preset": {
       const preset = findSchedulePreset(context.schedulePresets, command.presetId);
       return applySchedulePreset(rootState, preset, {
-        fallbackActivityId: context.initialActivityId,
+        getActivity: context.getActivity,
       });
     }
 
@@ -134,12 +177,11 @@ function dispatchSessionCommand(rootState, command, context) {
     case "schedule/set-slot":
       return setSelectedPlanningSlot(rootState, command.index, {
         slotCount: context.slotCount,
-        fallbackActivityId: context.initialActivityId,
       });
 
     case "schedule/assign-activity":
       return assignPlanningActivity(rootState, command.activityId, {
-        activityExists: context.activityExists,
+        getActivity: context.getActivity,
       });
 
     case "run/restart":

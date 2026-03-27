@@ -3,7 +3,9 @@ window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 const {
   normalizePlayerState,
-  cloneDefaultSchedule,
+  buildDailyScheduleFromWeeklyTimetable,
+  buildScheduleLocksFromWeeklyTimetable,
+  findNextEditableSlot,
 } = window.GAME_RUNTIME;
 const {
   buildMemoryPiecesForState,
@@ -172,13 +174,10 @@ function finishNightFlow(rootState, context) {
   rootState.day += 1;
   rootState.mode = "planning";
   rootState.scene = "campus";
-  rootState.schedule = cloneDefaultSchedule(
-    context.defaultSchedules,
-    rootState.selectedArchetype,
-    context.defaultArchetypeId
-  );
-  rootState.selectedSlot = 0;
-  rootState.selectedActivity = rootState.schedule[0];
+  rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+  rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+  rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
+  rootState.selectedActivity = context.defaultFreeActivityId;
   rootState.dayModifier = null;
   return { ok: true, finishedRun: false };
 }

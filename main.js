@@ -26,7 +26,8 @@ const {
   RESOURCE_LABELS,
   ARCHETYPES,
   ACTIVITIES,
-  DEFAULT_SCHEDULES,
+  WEEKDAY_LABELS,
+  COURSE_SELECTION_BLOCKS,
   SCHEDULE_PRESETS,
   DAY_MODIFIERS,
   RANDOM_EVENTS,
@@ -84,12 +85,12 @@ const RUNTIME_COPY = {
   runStartStory: {
     ...COPY.runStartStory,
     title: "太学院开学周",
-    body: "先在久安站稳脚跟。安排每天的课程、生活与夜修节奏，白天积累成长，晚上把灵块拼进长期记忆。",
+    body: "先在开周选课阶段敲定这周固定课程，再把每天的自由时段安排好。白天推进课程与生活，晚上把灵块拼进长期记忆。",
   },
   incompleteSchedule: {
     ...COPY.incompleteSchedule,
     title: "日程未满",
-    body: "今天的全部时段都需要先安排好。这个 demo 会把课程、作业、生活事件和夜间构筑压进同一天的完整循环里。",
+    body: "今天的自由时段还没有安排完。固定课程会按课表自动带入，但空出来的时段仍需要你自己补齐。",
   },
 };
 
@@ -321,6 +322,7 @@ function createMemoryBridgeState() {
 }
 
 function createSessionOptions() {
+  const initialFreeActivityId = ACTIVITIES.find((activity) => activity.kind !== "course")?.id || ACTIVITIES[0].id;
   return {
     createRng,
     createTodayState,
@@ -330,7 +332,7 @@ function createSessionOptions() {
     totalDays: 7,
     slotCount: SLOT_NAMES.length,
     initialArchetypeId: ARCHETYPES[0].id,
-    initialActivityId: ACTIVITIES[0].id,
+    initialActivityId: initialFreeActivityId,
     memoryCenterNodeId: MEMORY_HEX_LAYOUT.centerNodeId,
     copy: RUNTIME_COPY,
   };
@@ -338,6 +340,7 @@ function createSessionOptions() {
 
 const sessionOptions = createSessionOptions();
 const state = createGameState(sessionOptions);
+const PLANNING_ACTIVITIES = ACTIVITIES.filter((activity) => activity.kind !== "course");
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -355,6 +358,12 @@ function pushTimeline(slotIndex, activity, notes) {
 
 function getActivity(id) {
   return ACTIVITIES.find((activity) => activity.id === id);
+}
+
+function getEditableScheduleStats(schedule = state.schedule, scheduleLocks = state.scheduleLocks) {
+  const total = scheduleLocks.filter((locked) => !locked).length;
+  const filled = schedule.reduce((count, activityId, index) => count + (!scheduleLocks[index] && activityId ? 1 : 0), 0);
+  return { filled, total };
 }
 
 function getActivityKindLabel(activity) {
@@ -503,12 +512,18 @@ function renderMemoryShardField() {
     .join("");
 }
 
-function getPlanningScheduleFilledText(filled) {
-  return `已填写 ${filled} / ${SLOT_NAMES.length} 个时段。`;
+function getPlanningScheduleFilledText(filled, total) {
+  if (total <= 0) {
+    return "今天没有可自由安排的时段。";
+  }
+  return `自由时段已填写 ${filled} / ${total} 个。`;
 }
 
-function getPlanningScheduleHintText(filled) {
-  return filled === SLOT_NAMES.length ? "全部时段已排满，可以直接执行当天。" : "先把今天的时段全部填满，再进入白天结算。";
+function getPlanningScheduleHintText(filled, total) {
+  if (total <= 0) {
+    return "今天只有固定课程，可以直接执行当天。";
+  }
+  return filled === total ? "今天的自由时段已经排满，可以直接执行当天。" : "先把今天的自由时段补满，再进入白天结算。";
 }
 
 function getFlowHotkeysText() {
@@ -519,8 +534,77 @@ function getResolvingProgressText(done) {
   return `已完成 ${done} / ${SLOT_NAMES.length} 个时段。`;
 }
 
-function getPlanningProgressText(filled) {
-  return `已安排 ${filled} / ${SLOT_NAMES.length} 个时段。`;
+function getPlanningProgressText(filled, total) {
+  if (total <= 0) {
+    return "今日无自由时段";
+  }
+  return `已安排 ${filled} / ${total} 个自由时段。`;
+}
+
+function getWeekdayLabel(day) {
+  return WEEKDAY_LABELS[day - 1] || `第 ${day} 天`;
+}
+
+function getCourseBlockTimingText(block) {
+  const dayLabels = (block.days || []).map((day) => getWeekdayLabel(day)).join(" / ");
+  return `${SLOT_NAMES[block.slotIndex] || "时段"} · ${dayLabels}`;
+}
+
+function getCourseSkillColor(activity) {
+  if (!activity?.skill) {
+    return "#89bbff";
+  }
+  return MEMORY_ZONE_META[activity.skill]?.color || "#89bbff";
+}
+
+function isPlanningSlotLocked(index) {
+  return Boolean(state.scheduleLocks[index]);
+}
+
+function renderWeeklyTimetable() {
+  const rows = SLOT_NAMES.map((slotName, slotIndex) => {
+    const cells = state.weeklyTimetable
+      .map((daySchedule, dayIndex) => {
+        const activity = getActivity(daySchedule?.[slotIndex]);
+        return `
+          <div class="week-cell ${dayIndex + 1 === state.day ? "current-day" : ""} ${activity ? "fixed" : "free"}">
+            ${activity ? `<strong>${activity.name}</strong>` : `<small>自由</small>`}
+          </div>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="week-slot-label">${slotName}</div>
+      ${cells}
+    `;
+  }).join("");
+
+  return `
+    <div class="weekly-timetable-shell">
+      <div class="panel-title">
+        <h3>本周固定课表</h3>
+        <span class="badge">${getWeekdayLabel(state.day)}</span>
+      </div>
+      <div class="weekly-timetable-scroll">
+        <div class="weekly-timetable-grid">
+          <div class="week-corner">时段</div>
+          ${Array.from({ length: state.totalDays }, (_, index) => `<div class="week-day-head ${index + 1 === state.day ? "current-day" : ""}">${getWeekdayLabel(index + 1)}</div>`).join("")}
+          ${rows}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function pickCourseSelection(blockId, courseId) {
+  runSessionCommand({ type: "course/select", blockId, courseId });
+  syncUi();
+}
+
+function confirmCourseSelection() {
+  runSessionCommand({ type: "course/confirm" });
+  syncUi();
 }
 
 function getArchetype(id) {
@@ -538,13 +622,13 @@ function getMainFocusSkill() {
 function runSessionCommand(command) {
   return dispatchSessionCommand(state, command, {
     ...sessionOptions,
-    defaultSchedules: DEFAULT_SCHEDULES,
+    courseSelectionBlocks: COURSE_SELECTION_BLOCKS,
     schedulePresets: SCHEDULE_PRESETS,
     defaultArchetypeId: ARCHETYPES[0].id,
     copy: RUNTIME_COPY,
     uiText: UI_TEXT,
     getArchetype,
-    activityExists: (activityId) => Boolean(getActivity(activityId)),
+    getActivity,
     addLog,
     sessionOptions,
   });
@@ -559,7 +643,7 @@ function createDayFlowContext() {
     storyBeats: STORY_BEATS,
     dayModifiers: DAY_MODIFIERS,
     randomEvents: RANDOM_EVENTS,
-    fallbackActivityId: ACTIVITIES[0].id,
+    fallbackActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
     getActivity,
     getMainFocusSkill,
     addLog,
@@ -579,8 +663,8 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     skillLabels: SKILL_LABELS,
     uiText: UI_TEXT,
     copy: RUNTIME_COPY,
-    defaultSchedules: DEFAULT_SCHEDULES,
-    defaultArchetypeId: ARCHETYPES[0].id,
+    slotCount: SLOT_NAMES.length,
+    defaultFreeActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
     pieceId,
     getMainFocusSkill,
     addLog,
@@ -658,9 +742,15 @@ function assignActivity(activityId) {
 }
 
 function cycleSelectedActivity(delta) {
-  const currentIndex = ACTIVITIES.findIndex((activity) => activity.id === state.selectedActivity);
-  const nextIndex = (currentIndex + delta + ACTIVITIES.length) % ACTIVITIES.length;
-  state.selectedActivity = ACTIVITIES[nextIndex].id;
+  if (state.scheduleLocks[state.selectedSlot] || !PLANNING_ACTIVITIES.length) {
+    return;
+  }
+  const currentIndex = Math.max(
+    0,
+    PLANNING_ACTIVITIES.findIndex((activity) => activity.id === state.selectedActivity)
+  );
+  const nextIndex = (currentIndex + delta + PLANNING_ACTIVITIES.length) % PLANNING_ACTIVITIES.length;
+  state.selectedActivity = PLANNING_ACTIVITIES[nextIndex].id;
   syncUi();
 }
 
@@ -865,6 +955,10 @@ function drawScene() {
     drawMenuScene();
     return;
   }
+  if (state.mode === "course_selection") {
+    drawCourseSelectionScene();
+    return;
+  }
   if (state.mode === "memory") {
     drawMemoryScene();
     return;
@@ -891,6 +985,52 @@ function drawPlanningScene() {
   drawBanner(UI_TEXT.canvas.planningTitle(state.day), UI_TEXT.canvas.planningSubtitle);
   drawTimelineStrip();
   drawStatConstellation();
+}
+
+function drawCourseSelectionScene() {
+  drawAcademyBackdrop("#162c46", "#0b1625");
+  drawBanner("开周选课", "先在整周课表里锁定固定课程，再进入每天的自由安排。");
+
+  const originX = 84;
+  const originY = 168;
+  const labelWidth = 98;
+  const cellWidth = 102;
+  const cellHeight = 46;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillRect(originX, originY, labelWidth + cellWidth * state.totalDays, cellHeight * (SLOT_NAMES.length + 1));
+
+  ctx.fillStyle = "#9ab1c8";
+  ctx.font = "15px 'Microsoft YaHei'";
+  ctx.fillText("时段", originX + 28, originY + 30);
+  for (let day = 1; day <= state.totalDays; day += 1) {
+    const x = originX + labelWidth + (day - 1) * cellWidth;
+    ctx.fillStyle = day === state.day ? "#f0c36c" : "#c8d7ea";
+    ctx.fillText(getWeekdayLabel(day), x + 26, originY + 30);
+  }
+
+  SLOT_NAMES.forEach((slotName, slotIndex) => {
+    const y = originY + cellHeight * (slotIndex + 1);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(originX, y, labelWidth, cellHeight - 2);
+    ctx.fillStyle = "#c8d7ea";
+    ctx.fillText(slotName, originX + 24, y + 28);
+
+    for (let day = 1; day <= state.totalDays; day += 1) {
+      const activity = getActivity(state.weeklyTimetable[day - 1]?.[slotIndex]);
+      const x = originX + labelWidth + (day - 1) * cellWidth;
+      ctx.fillStyle = activity ? `${getCourseSkillColor(activity)}22` : "rgba(255,255,255,0.03)";
+      ctx.fillRect(x, y, cellWidth - 4, cellHeight - 4);
+      ctx.strokeStyle = activity ? `${getCourseSkillColor(activity)}aa` : "rgba(255,255,255,0.08)";
+      ctx.strokeRect(x, y, cellWidth - 4, cellHeight - 4);
+      ctx.fillStyle = activity ? "#edf4ff" : "#7f94ab";
+      ctx.font = activity ? "13px 'Microsoft YaHei'" : "12px 'Microsoft YaHei'";
+      const text = activity ? activity.name.replace("上", "").replace("去", "") : "待选";
+      ctx.fillText(text, x + 10, y + 27, cellWidth - 20);
+    }
+  });
+  ctx.restore();
 }
 
 function drawResolvingScene() {
@@ -1262,7 +1402,9 @@ function syncUi() {
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =
-    state.mode === "planning"
+    state.mode === "course_selection"
+      ? "正在安排本周固定课程"
+      : state.mode === "planning"
       ? UI_TEXT.statusLine.planning(state.day, SLOT_NAMES[state.selectedSlot])
       : state.mode === "resolving"
         ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
@@ -1274,9 +1416,52 @@ function syncUi() {
 }
 
 function renderFlowPanel() {
+  if (state.mode === "course_selection") {
+    const quickCards = getQuickStatusCards();
+    const pickedCount = state.courseSelection.blocks.filter((block) => block.selectedCourseId).length;
+    flowPanel.innerHTML = `
+      <div class="flow-shell">
+        <div class="panel-title">
+          <h2>当前进展</h2>
+          <span class="badge">选课阶段</span>
+        </div>
+        <div class="hint-grid">
+          <div class="hint-card focus-callout">
+            <strong>${state.currentStory.title}</strong>
+            <small>${state.currentStory.body}</small>
+          </div>
+          <div class="hint-card">
+            <strong>现在要做什么</strong>
+            <small>右侧为每组固定上课时间选定一门课程，左上主舞台会实时预览整周课表。</small>
+            <small>全部选完后，确认课表并进入每天的自由安排。</small>
+          </div>
+        </div>
+        <div class="quick-grid">
+          ${quickCards.map((card) => `
+            <div class="quick-card">
+              <strong>${card.value}</strong>
+              <small>${card.label}</small>
+              <small>${card.hint}</small>
+            </div>
+          `).join("")}
+        </div>
+        <div class="selection-summary">
+          <p class="tiny">固定课程已选 ${pickedCount} / ${state.courseSelection.blocks.length} 组。</p>
+          <p class="tiny">${pickedCount === state.courseSelection.blocks.length ? "课表已完整，可以进入本周。" : "仍有固定时段尚未选课。"}</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   const phaseIndex = getCurrentPhaseIndex();
   const quickCards = getQuickStatusCards();
   const currentActivity = getActivity(state.schedule[Math.max(0, Math.min(state.selectedSlot, SLOT_NAMES.length - 1))]);
+  const planningHintText = isPlanningSlotLocked(state.selectedSlot)
+    ? `当前时段 ${SLOT_NAMES[state.selectedSlot]} 为固定课程，只能查看内容，不能改动。请切换到其他自由时段安排活动。`
+    : UI_TEXT.flow.planningHint(currentActivity ? currentActivity.name : null);
+  const courseSelectionReady =
+    state.mode === "course_selection" && state.courseSelection.blocks.length > 0 && state.courseSelection.blocks.every((block) => block.selectedCourseId);
   const latestTimeline = state.timeline[0];
   flowPanel.innerHTML = `
     <div class="flow-shell">
@@ -1346,8 +1531,12 @@ function renderFlowPanel() {
           <small>${
             state.mode === "menu"
               ? UI_TEXT.flow.menuHint
+              : state.mode === "course_selection"
+                ? courseSelectionReady
+                  ? "固定课程已经选完，可以确认并进入今天的自由安排。"
+                  : "先为每组固定上课时间选定课程。主舞台会实时预览整周课表。"
               : state.mode === "planning"
-                ? UI_TEXT.flow.planningHint(currentActivity ? currentActivity.name : null)
+                ? planningHintText
                 : state.mode === "resolving"
                   ? state.resolvingFlow.autoplay
                     ? UI_TEXT.flow.resolvingHintAuto
@@ -1381,7 +1570,6 @@ function renderFlowPanel() {
 }
 
 function renderPlanningPanel() {
-  const activeActivity = getActivity(state.selectedActivity) || ACTIVITIES[0];
   if (state.mode === "resolving") {
     const flow = state.resolvingFlow;
     const currentIndex = Math.min(flow.slotIndex, SLOT_NAMES.length - 1);
@@ -1438,47 +1626,63 @@ function renderPlanningPanel() {
   }
 
   const selectedSlotActivity = getActivity(state.schedule[state.selectedSlot]);
-  const filledSlots = state.schedule.filter(Boolean).length;
+  const selectedSlotLocked = isPlanningSlotLocked(state.selectedSlot);
+  const activeActivity = getActivity(state.selectedActivity) || PLANNING_ACTIVITIES[0] || ACTIVITIES[0];
+  const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
+  const todayFixedCourses = state.schedule
+    .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: SLOT_NAMES[index] }))
+    .filter((item) => item.locked && item.activity);
   mainPanel.innerHTML = `
     <div class="planning-shell">
       <div class="panel-title">
-        <h2>${UI_TEXT.planning.eventTitle}</h2>
-        <span class="badge">${SLOT_NAMES[state.selectedSlot]}</span>
+        <h2>今日安排</h2>
+        <span class="badge">${getWeekdayLabel(state.day)} · ${SLOT_NAMES[state.selectedSlot]}</span>
       </div>
       <div class="story-card focus-callout">
         <strong>${SLOT_NAMES[state.selectedSlot]}</strong>
-        <small>${UI_TEXT.planning.eventHelp}</small>
-        <small>${UI_TEXT.planning.eventPicked(selectedSlotActivity?.name || null)}</small>
+        <small>${selectedSlotLocked ? "这个时段来自整周课表中的固定课程，只能查看，不能改动。" : "这个时段是自由时间，可以安排课业、生活、修炼或社交。固定课程会按周课表自动带入。"}</small>
+        <small>${selectedSlotLocked ? `固定课程：${selectedSlotActivity?.name || "未排课"}` : UI_TEXT.planning.eventPicked(selectedSlotActivity?.name || null)}</small>
       </div>
       <div class="planning-meta-grid">
         <div class="story-card">
-          <strong>${UI_TEXT.planning.preparingTitle}</strong>
-          <small>${activeActivity.name}</small>
-          <small>${activeActivity.summary}</small>
+          <strong>${selectedSlotLocked ? "固定课程详情" : UI_TEXT.planning.preparingTitle}</strong>
+          <small>${selectedSlotActivity?.name || activeActivity.name}</small>
+          <small>${selectedSlotLocked ? selectedSlotActivity?.summary || "这节课会按周课表自动执行。" : activeActivity.summary}</small>
         </div>
         <div class="story-card">
-          <strong>${UI_TEXT.planning.scheduleTitle}</strong>
-          <small>${getPlanningScheduleFilledText(filledSlots)}</small>
-          <small>${getPlanningScheduleHintText(filledSlots)}</small>
+          <strong>今日自由时段</strong>
+          <small>${getPlanningScheduleFilledText(filledSlots, totalEditableSlots)}</small>
+          <small>${getPlanningScheduleHintText(filledSlots, totalEditableSlots)}</small>
         </div>
       </div>
-      <div class="planning-event-list">
-        <div class="activity-grid planning-activity-grid">
-          ${ACTIVITIES.map(
-            (activity) => `
-              <button class="activity-card ${state.selectedActivity === activity.id ? "active" : ""}" data-activity="${activity.id}" data-tone="${activity.tone}">
-                <strong>${activity.name}</strong>
-                <small>${getActivityKindLabel(activity)} · 推荐：${getActivityPreferredSlotText(activity)}</small>
-                <small>${activity.summary}</small>
-              </button>
-            `
-          ).join("")}
-        </div>
-      </div>
+      ${
+        selectedSlotLocked
+          ? `
+            <div class="planning-event-list">
+              <div class="story-card locked-slot-note">
+                <strong>今日固定课程</strong>
+                <small>${todayFixedCourses.length ? todayFixedCourses.map((item) => `${item.slot} · ${item.activity.name}`).join(" / ") : "今天没有固定课程。"}</small>
+                <small>切换到左侧的自由时段后，右侧才会出现可安排的自由活动列表。</small>
+              </div>
+            </div>
+          `
+          : `
+            <div class="planning-event-list">
+              <div class="activity-grid planning-activity-grid">
+                ${PLANNING_ACTIVITIES.map(
+                  (activity) => `
+                    <button class="activity-card ${state.selectedActivity === activity.id ? "active" : ""}" data-activity="${activity.id}" data-tone="${activity.tone}">
+                      <strong>${activity.name}</strong>
+                      <small>${getActivityKindLabel(activity)} · 推荐：${getActivityPreferredSlotText(activity)}</small>
+                      <small>${activity.summary}</small>
+                    </button>
+                  `
+                ).join("")}
+              </div>
+            </div>
+          `
+      }
       <div class="action-row planning-actions">
-        ${SCHEDULE_PRESETS.map(
-          (preset) => `<button class="ghost-button" data-preset="${preset.id}">${preset.label}</button>`
-        ).join("")}
         <button class="ghost-button warn" id="clear-btn">${UI_TEXT.planning.clear}</button>
         <button class="primary" id="execute-btn">${UI_TEXT.planning.execute}</button>
       </div>
@@ -1487,16 +1691,78 @@ function renderPlanningPanel() {
   mainPanel.querySelectorAll("[data-activity]").forEach((button) => {
     button.addEventListener("click", () => assignActivity(button.dataset.activity));
   });
-  mainPanel.querySelectorAll("[data-preset]").forEach((button) => {
-    button.addEventListener("click", () => fillPreset(button.dataset.preset));
-  });
   mainPanel.querySelector("#clear-btn").addEventListener("click", clearSchedule);
   mainPanel.querySelector("#execute-btn").addEventListener("click", startDay);
+}
+
+function renderCourseSelectionPanel() {
+  const blocks = state.courseSelection.blocks || [];
+  const ready = blocks.length > 0 && blocks.every((block) => block.selectedCourseId);
+  mainPanel.innerHTML = `
+    <div class="planning-shell">
+      <div class="panel-title">
+        <h2>开周选课</h2>
+        <span class="badge">${getWeekdayLabel(1)} 前</span>
+      </div>
+      <div class="story-card focus-callout">
+        <strong>固定课程在这里一次性选定</strong>
+        <small>每组课程都有固定上课时段。你选中的课程会自动铺进整周课表，之后每天只能在剩余自由时段安排行动。</small>
+        <small>左上主舞台会实时展示整周课表预览。</small>
+      </div>
+      <div class="planning-event-list">
+        <div class="course-selection-list">
+          ${blocks
+            .map((block) => {
+              const selectedActivity = getActivity(block.selectedCourseId);
+              return `
+                <div class="course-selection-card">
+                  <strong>${block.label}</strong>
+                  <small>${getCourseBlockTimingText(block)}</small>
+                  <small>${selectedActivity ? `已选：${selectedActivity.name}` : "尚未选择课程"}</small>
+                  <div class="course-option-row">
+                    ${(block.options || [])
+                      .map((courseId) => {
+                        const activity = getActivity(courseId);
+                        if (!activity) {
+                          return "";
+                        }
+                        return `
+                          <button
+                            class="ghost-button ${block.selectedCourseId === courseId ? "primary" : ""}"
+                            data-course-block="${block.id}"
+                            data-course-id="${courseId}"
+                            type="button"
+                          >
+                            ${activity.name}
+                          </button>
+                        `;
+                      })
+                      .join("")}
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+      <div class="action-row planning-actions">
+        <button class="primary" id="confirm-course-selection-btn" ${ready ? "" : "disabled"}>确认课表并开始本周</button>
+      </div>
+    </div>
+  `;
+  mainPanel.querySelectorAll("[data-course-block]").forEach((button) => {
+    button.addEventListener("click", () => pickCourseSelection(button.dataset.courseBlock, button.dataset.courseId));
+  });
+  mainPanel.querySelector("#confirm-course-selection-btn").addEventListener("click", confirmCourseSelection);
 }
 
 function renderMainPanel() {
   if (state.mode === "menu") {
     renderMenuPanel();
+    return;
+  }
+  if (state.mode === "course_selection") {
+    renderCourseSelectionPanel();
     return;
   }
   if (state.mode === "planning" || state.mode === "resolving") {
@@ -1932,12 +2198,36 @@ function renderMemoryPanelCompact() {
 }
 
 function renderLeftPanel() {
+  if (state.mode === "course_selection") {
+    const blocks = state.courseSelection.blocks || [];
+    leftPanel.innerHTML = `
+      <div class="panel-title">
+        <h2>本周选课</h2>
+        <span class="badge">${blocks.filter((block) => block.selectedCourseId).length} / ${blocks.length}</span>
+      </div>
+      <div class="left-info-grid">
+        <div class="left-info-card">
+          <strong>选课规则</strong>
+          <small>每组课程都对应固定上课时间，选定后会自动写入整周课表。</small>
+          <small>确认课表后，课程时段会锁定，之后只能安排自由时间。</small>
+        </div>
+        <div class="left-info-card">
+          <strong>当前进度</strong>
+          <small>已选模块：${blocks.filter((block) => block.selectedCourseId).length} / ${blocks.length}</small>
+          <small>${blocks.every((block) => block.selectedCourseId) ? "课表已完整，可以开始本周。" : "右侧还有未选定的固定课程。"}</small>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (state.mode === "planning" || state.mode === "resolving") {
-    const filledSlots = state.schedule.filter(Boolean).length;
+    const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
     const resolvingSlotIndex =
       state.mode === "resolving" ? Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1) : state.selectedSlot;
     const currentSlotName = SLOT_NAMES[resolvingSlotIndex];
     const currentSlotActivity = getActivity(state.schedule[resolvingSlotIndex]);
+    const currentSlotLocked = isPlanningSlotLocked(resolvingSlotIndex);
     leftPanel.innerHTML = `
       <div class="panel-title">
         <h2>${UI_TEXT.left.scheduleTitle}</h2>
@@ -1963,9 +2253,10 @@ function renderLeftPanel() {
             cls = "active";
           }
           return `
-            <button class="left-slot-card ${cls}" data-left-slot="${index}" ${state.mode === "resolving" ? "disabled" : ""}>
+            <button class="left-slot-card ${cls} ${state.scheduleLocks[index] ? "fixed" : "free"}" data-left-slot="${index}" ${state.mode === "resolving" ? "disabled" : ""}>
               <strong>${slot}</strong>
               <small>${activity ? activity.name : UI_TEXT.common.unassigned}</small>
+              <small>${state.scheduleLocks[index] ? "固定课程" : "自由安排"}</small>
             </button>
           `;
         }).join("")}
@@ -1976,14 +2267,18 @@ function renderLeftPanel() {
           <small>${
             state.mode === "resolving"
               ? UI_TEXT.left.resolvingStep(currentSlotName, Math.round(state.progress * 100))
-              : UI_TEXT.left.planningStep(currentSlotName)
+              : currentSlotLocked
+                ? `${currentSlotName} 为固定课程时段，可查看但不能改动。`
+                : UI_TEXT.left.planningStep(currentSlotName)
           }</small>
           <small>${
             state.mode === "resolving"
               ? state.resolvingFlow.autoplay
                 ? UI_TEXT.left.resolvingStepHintAuto
                 : UI_TEXT.left.resolvingStepHintClick
-              : UI_TEXT.left.planningStepHint(currentSlotActivity?.name || null, currentSlotName)
+              : currentSlotLocked
+                ? `固定课程：${currentSlotActivity?.name || "未排课"}。请切换到其他自由时段继续安排今天。`
+                : UI_TEXT.left.planningStepHint(currentSlotActivity?.name || null, currentSlotName)
           }</small>
         </div>
         <div class="left-info-card">
@@ -1991,7 +2286,7 @@ function renderLeftPanel() {
           <small>${
             state.mode === "resolving"
               ? getResolvingProgressText(Math.min(state.resolvingIndex, SLOT_NAMES.length))
-              : getPlanningProgressText(filledSlots)
+              : getPlanningProgressText(filledSlots, totalEditableSlots)
           }</small>
           <small>${state.mode === "resolving" ? UI_TEXT.left.resolvingProgressHint : UI_TEXT.left.planningProgressHint}</small>
         </div>
@@ -2091,6 +2386,7 @@ document.addEventListener(
     changeArchetype,
     applyArchetypeIfNeeded,
     startRun,
+    confirmCourseSelection,
     cycleSelectedActivity,
     assignActivity,
     fillPreset,

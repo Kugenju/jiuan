@@ -1228,9 +1228,74 @@ button {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   gap: 14px;
   overflow: hidden;
+}
+
+.weekly-timetable-shell {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.weekly-timetable-shell .panel-title {
+  margin-bottom: 0;
+}
+
+.weekly-timetable-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.weekly-timetable-grid {
+  min-width: 760px;
+  display: grid;
+  grid-template-columns: 92px repeat(7, minmax(86px, 1fr));
+  gap: 8px;
+}
+
+.week-corner,
+.week-day-head,
+.week-slot-label,
+.week-cell {
+  border-radius: 14px;
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.week-corner,
+.week-day-head,
+.week-slot-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.week-day-head.current-day,
+.week-cell.current-day {
+  border-color: rgba(240, 195, 108, 0.38);
+  background: rgba(240, 195, 108, 0.08);
+}
+
+.week-cell.fixed {
+  border-color: rgba(137, 187, 255, 0.24);
+  background: rgba(137, 187, 255, 0.08);
+}
+
+.week-cell.free {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.week-cell strong,
+.week-cell small {
+  display: block;
+  line-height: 1.4;
+}
+
+.week-cell small {
+  color: var(--muted);
 }
 
 .planning-meta-grid {
@@ -1248,6 +1313,36 @@ button {
 .planning-activity-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   align-content: start;
+}
+
+.course-selection-list {
+  display: grid;
+  gap: 12px;
+}
+
+.course-selection-card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px;
+}
+
+.course-selection-card strong,
+.course-selection-card small {
+  display: block;
+}
+
+.course-selection-card small {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.course-option-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .planning-actions {
@@ -1290,6 +1385,16 @@ button {
 .left-slot-card.done {
   border-color: rgba(240, 195, 108, 0.4);
   background: rgba(240, 195, 108, 0.08);
+}
+
+.left-slot-card.fixed {
+  border-color: rgba(137, 187, 255, 0.22);
+  background: rgba(137, 187, 255, 0.07);
+}
+
+.locked-slot-note {
+  border-color: rgba(137, 187, 255, 0.24);
+  background: rgba(137, 187, 255, 0.06);
 }
 
 .left-slot-card strong,
@@ -1506,6 +1611,10 @@ button {
   .planning-meta-grid,
   .planning-activity-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .weekly-timetable-grid {
+    min-width: 620px;
   }
 }
 

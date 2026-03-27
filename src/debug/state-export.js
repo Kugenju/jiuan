@@ -27,8 +27,26 @@ function buildTextStateExport(rootState, context) {
     schedule: context.slotNames.map((slot, index) => ({
       slot,
       action: context.getActivity(rootState.schedule[index])?.name || context.uiText.common.unassigned,
+      locked: Boolean(rootState.scheduleLocks[index]),
       selected: rootState.selectedSlot === index,
     })),
+    weekly_timetable: (rootState.weeklyTimetable || []).map((daySchedule, dayIndex) => ({
+      day: dayIndex + 1,
+      slots: context.slotNames.map((slot, slotIndex) => ({
+        slot,
+        action: context.getActivity(daySchedule?.[slotIndex])?.name || null,
+      })),
+    })),
+    course_selection: {
+      blocks: (rootState.courseSelection?.blocks || []).map((block) => ({
+        id: block.id,
+        label: block.label,
+        slot_index: block.slotIndex,
+        days: block.days,
+        selected_course: context.getActivity(block.selectedCourseId)?.name || null,
+        options: (block.options || []).map((courseId) => context.getActivity(courseId)?.name || courseId),
+      })),
+    },
     stats: rootState.stats,
     skills: rootState.skills,
     resources: rootState.resources,

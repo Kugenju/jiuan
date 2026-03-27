@@ -32,6 +32,10 @@ function createKeyboardHandler(context) {
       }
     }
 
+    if (context.state.mode === "course_selection") {
+      if (key === "enter") context.confirmCourseSelection();
+    }
+
     if (context.state.mode === "planning") {
       if (key === "arrowleft") context.setSlot(context.clamp(context.state.selectedSlot - 1, 0, context.slotCount - 1));
       if (key === "arrowright") {
@@ -40,8 +44,6 @@ function createKeyboardHandler(context) {
       if (key === "arrowup") context.cycleSelectedActivity(-1);
       if (key === "arrowdown") context.cycleSelectedActivity(1);
       if (key === " ") context.assignActivity(context.state.selectedActivity);
-      if (key === "a") context.fillPreset("balanced");
-      if (key === "b") context.fillPreset("body_expand");
     }
 
     if (event.key === "Enter" && context.state.mode === "planning") {

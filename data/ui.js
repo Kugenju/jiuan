@@ -25,7 +25,7 @@ const UI_TEXT = {
   },
   statusLine: {
     planning(day, slotName) {
-      return `第 ${day} 天待安排，当前选中 ${slotName}`;
+      return `第 ${day} 天自由安排中，当前选中 ${slotName}`;
     },
     resolving(day, progress, autoplay) {
       return `第 ${day} 天剧情推进中：${progress}%${autoplay ? "（自动）" : "（点击）"}`;
@@ -104,18 +104,21 @@ const UI_TEXT = {
     resolveCurrentActivity(name) {
       return `当前时段：${name}`;
     },
-    eventTitle: "可选事件",
-    eventHelp: "左栏负责选时段，右栏只显示当前时段可用的事件与操作。",
+    eventTitle: "自由时段安排",
+    eventHelp: "先查看一周固定课表，再为今天的自由时段填入活动。",
     eventPicked(name) {
       return name ? `已安排：${name}` : "这个时段还没有安排事件。";
     },
     preparingTitle: "当前准备填入",
-    scheduleTitle: "今日排表",
-    scheduleFilled(filled) {
-      return `已填写 ${filled} / 4 个时段。`;
+    scheduleTitle: "今日自由安排",
+    scheduleFilled(filled, total = 0) {
+      return total <= 0 ? "今天没有可自由安排的时段。" : `已填写 ${filled} / ${total} 个自由时段。`;
     },
-    scheduleHint(filled) {
-      return filled === 4 ? "四个时段已满，可以直接执行当天。" : "先把四个时段全部填满再执行。";
+    scheduleHint(filled, total = 0) {
+      if (total <= 0) {
+        return "今天只有固定课程，可以直接执行当天。";
+      }
+      return filled === total ? "自由时段已排满，可以直接执行当天。" : "先把今天的自由时段全部填满再执行。";
     },
     clear: "清空日程",
     execute: "执行当天",
@@ -214,7 +217,7 @@ const UI_TEXT = {
       return `当前来到 ${slotName}，进度 ${progress}%。`;
     },
     planningStep(slotName) {
-      return `先在左侧选择时段，再在右侧选择事件。当前时段：${slotName}。`;
+      return `先在左侧选择自由时段，再在右侧安排活动。当前时段：${slotName}。`;
     },
     resolvingStepHintAuto: "自动播放已开启，可随时手动点击插入推进。",
     resolvingStepHintClick: "点击右侧剧情卡片或“点击推进剧情”按钮进入下一段。",
@@ -224,8 +227,8 @@ const UI_TEXT = {
     resolvingProgress(done) {
       return `已完成 ${done} / 4 个时段。`;
     },
-    planningProgress(filled) {
-      return `已安排 ${filled} / 4 个时段。`;
+    planningProgress(filled, total = 0) {
+      return total <= 0 ? "今日无自由时段。" : `已安排 ${filled} / ${total} 个自由时段。`;
     },
     resolvingProgressHint: "需要看角色状态、进度或最近反馈时，使用顶部按钮打开浮窗。",
     planningProgressHint: "下方的进度和反馈已经移出主界面，改为顶部按钮呼出。",
