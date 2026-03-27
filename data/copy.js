@@ -12,7 +12,7 @@ const COPY = {
   },
   runStartStory: {
     title: "太学院开学周",
-    body: "先在久安站稳脚跟。安排每天四个时段，白天收拢悟道点，晚上把灵块拼进长期记忆。",
+    body: "先在久安站稳脚跟。先排好一周固定课程，再安排每天六个关键时段，白天收拢悟道点，晚上把灵块拼进长期记忆。",
     speaker: "教习司",
   },
   runStartLog: {
@@ -21,7 +21,7 @@ const COPY = {
   },
   incompleteSchedule: {
     title: "日程未满",
-    body: "四个时段都要安排。当前 demo 将每天压缩成 4 个关键块来体现策划案里的课程节奏。",
+    body: "今天的可自由安排时段还没有填满。固定课程会自动带入，其余时段仍需你手动安排。",
     speaker: "教习司",
   },
   memoryPendingSummary: "夜间灵块尚未生成。",

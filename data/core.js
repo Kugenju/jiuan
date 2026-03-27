@@ -1,6 +1,45 @@
 window.GAME_DATA = window.GAME_DATA || {};
 
-const SLOT_NAMES = ["晨起", "晨课", "午间", "午后", "傍晚", "夜修"];
+const SLOT_DEFS = [
+  {
+    id: "dawn",
+    label: "晨起",
+    timeLabel: "卯时（05:00-07:00）",
+    futureLabel: "卯时起身",
+  },
+  {
+    id: "morning_class",
+    label: "晨课",
+    timeLabel: "辰时（07:00-09:00）",
+    futureLabel: "辰时早课",
+  },
+  {
+    id: "midday",
+    label: "午间",
+    timeLabel: "巳时（09:00-11:00）",
+    futureLabel: "巳时课业",
+  },
+  {
+    id: "afternoon",
+    label: "午后",
+    timeLabel: "午时-未时（11:00-15:00）",
+    futureLabel: "午未修习",
+  },
+  {
+    id: "dusk",
+    label: "傍晚",
+    timeLabel: "申时-酉时（15:00-19:00）",
+    futureLabel: "申酉行务",
+  },
+  {
+    id: "night",
+    label: "夜修",
+    timeLabel: "戌时-亥时（19:00-23:00）",
+    futureLabel: "戌亥夜修",
+  },
+];
+
+const SLOT_NAMES = SLOT_DEFS.map((slot) => slot.futureLabel || slot.label);
 
 const ACTIVITY_KIND_LABELS = {
   course: "课程",
@@ -13,6 +52,23 @@ const SKILL_LABELS = {
   sigil: "符法",
   dao: "道法",
   craft: "炼器",
+  herbal: "灵物",
+  formation: "阵法",
+};
+
+const SKILL_ZONE_MAP = {
+  math: "math",
+  sigil: "sigil",
+  dao: "dao",
+  craft: "craft",
+  herbal: "dao",
+  formation: "sigil",
+};
+
+const COURSE_CATEGORY_LABELS = {
+  required_common: "通识必修",
+  required_major: "专业必修",
+  elective: "专业选修",
 };
 
 const MEMORY_TYPES = {
@@ -79,9 +135,12 @@ const RESOURCE_LABELS = {
 };
 
 Object.assign(window.GAME_DATA, {
+  SLOT_DEFS,
   SLOT_NAMES,
   ACTIVITY_KIND_LABELS,
   SKILL_LABELS,
+  SKILL_ZONE_MAP,
+  COURSE_CATEGORY_LABELS,
   MEMORY_TYPES,
   MEMORY_ZONE_META,
   STAT_LABELS,

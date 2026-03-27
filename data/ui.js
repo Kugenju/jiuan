@@ -84,7 +84,7 @@ const UI_TEXT = {
     resolvingHintClick: "点击右侧剧情卡片或按钮，逐段推进白天流程。",
     memoryHint: "从待放置灵块里挑一块，落到满足规则的位置。",
     summaryHint: "查看本周结果，决定是否重新开始。",
-    hotkeys: "快捷键：1-4 选时段，空格填入活动；白天推进阶段按空格/Enter前进，P切自动播放；F 全屏。",
+    hotkeys: "快捷键：1-6 选时段，空格填入活动；白天推进阶段按空格/Enter前进，P切自动播放；F 全屏。",
     feedbackPrefix(day, slot, activity) {
       return `最近反馈：第 ${day} 天 ${slot} · ${activity}`;
     },
@@ -225,7 +225,7 @@ const UI_TEXT = {
       return activityName ? `已安排：${activityName}` : `${slotName} 还没有安排事件。`;
     },
     resolvingProgress(done) {
-      return `已完成 ${done} / 4 个时段。`;
+      return `已完成 ${done} / 6 个时段。`;
     },
     planningProgress(filled, total = 0) {
       return total <= 0 ? "今日无自由时段。" : `已安排 ${filled} / ${total} 个自由时段。`;

@@ -18,11 +18,16 @@ function normalizeDayTemplate(template, slotCount) {
 }
 
 function cloneCourseSelectionBlocks(courseSelectionBlocks, archetypeId, fallbackArchetypeId) {
+  const commonBlocks = courseSelectionBlocks.commonRequired || [];
   const source = courseSelectionBlocks[archetypeId] || courseSelectionBlocks[fallbackArchetypeId] || [];
-  return source.map((block) => ({
-    ...structuredClone(block),
-    selectedCourseId: null,
-  }));
+  return [...commonBlocks, ...source].map((block) => {
+    const cloned = structuredClone(block);
+    cloned.selectedCourseId =
+      cloned.selectedCourseId ||
+      cloned.defaultCourseId ||
+      (cloned.selectionMode === "fixed" && cloned.options?.length === 1 ? cloned.options[0] : null);
+    return cloned;
+  });
 }
 
 function buildWeeklyTimetableFromCourseSelection(blocks, totalDays, slotCount) {
@@ -55,7 +60,13 @@ function pickCourseForBlock(rootState, blockId, courseId, options) {
   }
   const block = rootState.courseSelection.blocks.find((item) => item.id === blockId);
   const activity = options.getActivity(courseId);
-  if (!block || !activity || activity.kind !== "course" || !(block.options || []).includes(courseId)) {
+  if (
+    !block ||
+    block.selectionMode === "fixed" ||
+    !activity ||
+    activity.kind !== "course" ||
+    !(block.options || []).includes(courseId)
+  ) {
     return false;
   }
   block.selectedCourseId = courseId;

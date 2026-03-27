@@ -36,10 +36,12 @@ function consumeDayModifierForActivity(rootState, activity, copy) {
 
 function ensureTodayCollections(rootState) {
   rootState.today.kinds = rootState.today.kinds || { course: 0, assignment: 0, routine: 0 };
-  rootState.today.courseSkills = rootState.today.courseSkills || { math: 0, sigil: 0, dao: 0, craft: 0 };
+  rootState.today.focus = rootState.today.focus || {};
+  rootState.today.courseSkills = rootState.today.courseSkills || {};
   rootState.today.courses = rootState.today.courses || [];
   rootState.today.assignments = rootState.today.assignments || [];
   rootState.today.randomEvents = rootState.today.randomEvents || [];
+  rootState.today.actions = rootState.today.actions || [];
   if (!Object.prototype.hasOwnProperty.call(rootState.today, "latestCourseSkill")) {
     rootState.today.latestCourseSkill = null;
   }
@@ -52,7 +54,7 @@ function trackActivityOnTodayState(rootState, activity, slotIndex) {
   rootState.today.kinds[activity.kind] += 1;
 
   if (activity.skill) {
-    rootState.today.focus[activity.skill] += 1;
+    rootState.today.focus[activity.skill] = (rootState.today.focus[activity.skill] || 0) + 1;
   }
 
   if (activity.kind === "course") {
@@ -63,7 +65,7 @@ function trackActivityOnTodayState(rootState, activity, slotIndex) {
       slotIndex,
     });
     if (activity.skill) {
-      rootState.today.courseSkills[activity.skill] += 1;
+      rootState.today.courseSkills[activity.skill] = (rootState.today.courseSkills[activity.skill] || 0) + 1;
     }
   }
 

@@ -21,7 +21,7 @@ function createBasePlayerState() {
       selfControl: 3,
       aura: 1,
     },
-    skills: { math: 0, sigil: 0, dao: 0, craft: 0 },
+    skills: { math: 0, sigil: 0, dao: 0, craft: 0, herbal: 0, formation: 0 },
     relationships: { roommate: 0, friend: 0, mentor: 0, counselor: 0 },
   };
 }

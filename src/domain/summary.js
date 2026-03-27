@@ -2,14 +2,12 @@
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 function computeRankForState(rootState, rankThresholds) {
+  const skillScore = Object.values(rootState.skills || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   const score =
     rootState.resources.spirit * 1.8 +
     rootState.resources.insight * 0.4 +
     rootState.stats.aura * 0.8 +
-    rootState.skills.math +
-    rootState.skills.sigil +
-    rootState.skills.dao +
-    rootState.skills.craft;
+    skillScore;
 
   return rankThresholds.find((item) => score >= item.min).label;
 }

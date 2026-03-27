@@ -14,9 +14,12 @@ const memoryStage = document.querySelector("#memory-stage");
 const infoModal = document.querySelector("#info-modal");
 
 const {
+  SLOT_DEFS,
   SLOT_NAMES,
   ACTIVITY_KIND_LABELS,
   SKILL_LABELS,
+  SKILL_ZONE_MAP,
+  COURSE_CATEGORY_LABELS,
   MEMORY_TYPES,
   MEMORY_FRAGMENT_TYPES,
   MEMORY_BUILD_RULES,
@@ -27,6 +30,7 @@ const {
   ARCHETYPES,
   ACTIVITIES,
   WEEKDAY_LABELS,
+  COURSE_CATALOG,
   COURSE_SELECTION_BLOCKS,
   SCHEDULE_PRESETS,
   DAY_MODIFIERS,
@@ -106,11 +110,12 @@ function createRng(seed = 20260313) {
 }
 
 function createTodayState() {
+  const emptySkillCounter = Object.fromEntries(Object.keys(SKILL_LABELS).map((key) => [key, 0]));
   return {
-    focus: { math: 0, sigil: 0, dao: 0, craft: 0 },
+    focus: structuredClone(emptySkillCounter),
     tones: { study: 0, life: 0, body: 0, social: 0 },
     kinds: { course: 0, assignment: 0, routine: 0 },
-    courseSkills: { math: 0, sigil: 0, dao: 0, craft: 0 },
+    courseSkills: structuredClone(emptySkillCounter),
     courses: [],
     assignments: [],
     randomEvents: [],
@@ -352,7 +357,7 @@ function addLog(title, body) {
 }
 
 function pushTimeline(slotIndex, activity, notes) {
-  state.timeline.unshift({ day: state.day, slot: SLOT_NAMES[slotIndex], activity: activity.name, notes });
+  state.timeline.unshift({ day: state.day, slot: getSlotLabel(slotIndex), activity: activity.name, notes });
   state.timeline = state.timeline.slice(0, 12);
 }
 
@@ -370,12 +375,38 @@ function getActivityKindLabel(activity) {
   return ACTIVITY_KIND_LABELS[activity?.kind] || "活动";
 }
 
+function getSlotMeta(index) {
+  return SLOT_DEFS[index] || null;
+}
+
+function getSlotLabel(index) {
+  return getSlotMeta(index)?.futureLabel || SLOT_NAMES[index] || getSlotMeta(index)?.label || "时段";
+}
+
+function getSlotTimeLabel(index) {
+  return getSlotMeta(index)?.timeLabel || "";
+}
+
+function getSlotFullLabel(index) {
+  const label = getSlotLabel(index);
+  const timeLabel = getSlotTimeLabel(index);
+  return timeLabel ? `${label} · ${timeLabel}` : label;
+}
+
+function getSkillZoneKey(skill) {
+  return SKILL_ZONE_MAP[skill] || skill || null;
+}
+
+function getCourseCatalogEntry(id) {
+  return COURSE_CATALOG.find((course) => course.id === id || course.activityId === id) || null;
+}
+
 function getActivityPreferredSlotText(activity) {
   const preferred = Array.isArray(activity?.preferred) ? activity.preferred : [];
   if (!preferred.length) {
     return "任意时段";
   }
-  return preferred.map((index) => SLOT_NAMES[index]).filter(Boolean).join(" / ");
+  return preferred.map((index) => getSlotLabel(index)).filter(Boolean).join(" / ");
 }
 
 function getMemoryPieceMeta(piece) {
@@ -547,14 +578,19 @@ function getWeekdayLabel(day) {
 
 function getCourseBlockTimingText(block) {
   const dayLabels = (block.days || []).map((day) => getWeekdayLabel(day)).join(" / ");
-  return `${SLOT_NAMES[block.slotIndex] || "时段"} · ${dayLabels}`;
+  return `${getSlotFullLabel(block.slotIndex)} · ${dayLabels}`;
+}
+
+function getCourseBlockCategoryLabel(block) {
+  return COURSE_CATEGORY_LABELS[block?.category] || block?.groupLabel || "课程";
 }
 
 function getCourseSkillColor(activity) {
   if (!activity?.skill) {
     return "#89bbff";
   }
-  return MEMORY_ZONE_META[activity.skill]?.color || "#89bbff";
+  const zoneKey = getSkillZoneKey(activity.skill);
+  return MEMORY_ZONE_META[zoneKey]?.color || "#89bbff";
 }
 
 function isPlanningSlotLocked(index) {
@@ -575,7 +611,9 @@ function renderWeeklyTimetable() {
       .join("");
 
     return `
-      <div class="week-slot-label">${slotName}</div>
+      <div class="week-slot-label">
+        <strong>${slotName}</strong>
+      </div>
       ${cells}
     `;
   }).join("");
@@ -1072,7 +1110,7 @@ function drawResolvingScene() {
 
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.font = "24px 'Microsoft YaHei'";
-  ctx.fillText(UI_TEXT.canvas.resolvingSlot(SLOT_NAMES[currentIndex]), 470, 210);
+  ctx.fillText(UI_TEXT.canvas.resolvingSlot(getSlotLabel(currentIndex)), 470, 210);
   ctx.font = "18px 'Microsoft YaHei'";
   wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
   drawCanvasProgress(470, 330, 340, 16, state.progress);
@@ -1403,9 +1441,9 @@ function syncUi() {
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =
     state.mode === "course_selection"
-      ? "正在安排本周固定课程"
+      ? "正在确认本周课表"
       : state.mode === "planning"
-      ? UI_TEXT.statusLine.planning(state.day, SLOT_NAMES[state.selectedSlot])
+      ? UI_TEXT.statusLine.planning(state.day, getSlotLabel(state.selectedSlot))
       : state.mode === "resolving"
         ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
         : state.mode === "memory"
@@ -1418,7 +1456,11 @@ function syncUi() {
 function renderFlowPanel() {
   if (state.mode === "course_selection") {
     const quickCards = getQuickStatusCards();
-    const pickedCount = state.courseSelection.blocks.filter((block) => block.selectedCourseId).length;
+    const blocks = state.courseSelection.blocks || [];
+    const requiredCount = blocks.filter((block) => block.category !== "elective" && block.selectedCourseId).length;
+    const requiredTotal = blocks.filter((block) => block.category !== "elective").length;
+    const electiveCount = blocks.filter((block) => block.category === "elective" && block.selectedCourseId).length;
+    const electiveTotal = blocks.filter((block) => block.category === "elective").length;
     flowPanel.innerHTML = `
       <div class="flow-shell">
         <div class="panel-title">
@@ -1432,8 +1474,8 @@ function renderFlowPanel() {
           </div>
           <div class="hint-card">
             <strong>现在要做什么</strong>
-            <small>右侧为每组固定上课时间选定一门课程，左上主舞台会实时预览整周课表。</small>
-            <small>全部选完后，确认课表并进入每天的自由安排。</small>
+            <small>先确认通识必修和专业必修已经写入课表，再从专业选修中决定本周偏向。</small>
+            <small>左上主舞台会实时预览整周课表，并展示各时段对应时辰。</small>
           </div>
         </div>
         <div class="quick-grid">
@@ -1446,8 +1488,8 @@ function renderFlowPanel() {
           `).join("")}
         </div>
         <div class="selection-summary">
-          <p class="tiny">固定课程已选 ${pickedCount} / ${state.courseSelection.blocks.length} 组。</p>
-          <p class="tiny">${pickedCount === state.courseSelection.blocks.length ? "课表已完整，可以进入本周。" : "仍有固定时段尚未选课。"}</p>
+          <p class="tiny">必修已锁定 ${requiredCount} / ${requiredTotal} 组，选修已选 ${electiveCount} / ${electiveTotal} 组。</p>
+          <p class="tiny">${blocks.every((block) => block.selectedCourseId) ? "课表已完整，可以进入本周。" : "仍有专业选修尚未选定。"}</p>
         </div>
       </div>
     `;
@@ -1458,7 +1500,7 @@ function renderFlowPanel() {
   const quickCards = getQuickStatusCards();
   const currentActivity = getActivity(state.schedule[Math.max(0, Math.min(state.selectedSlot, SLOT_NAMES.length - 1))]);
   const planningHintText = isPlanningSlotLocked(state.selectedSlot)
-    ? `当前时段 ${SLOT_NAMES[state.selectedSlot]} 为固定课程，只能查看内容，不能改动。请切换到其他自由时段安排活动。`
+    ? `当前时段 ${getSlotLabel(state.selectedSlot)} 为固定课程，只能查看内容，不能改动。请切换到其他自由时段安排活动。`
     : UI_TEXT.flow.planningHint(currentActivity ? currentActivity.name : null);
   const courseSelectionReady =
     state.mode === "course_selection" && state.courseSelection.blocks.length > 0 && state.courseSelection.blocks.every((block) => block.selectedCourseId);
@@ -1590,7 +1632,7 @@ function renderPlanningPanel() {
       <div class="resolving-shell">
         <div class="panel-title">
           <h2>${UI_TEXT.planning.resolveTitle}</h2>
-          <span class="badge">${SLOT_NAMES[currentIndex]}</span>
+          <span class="badge">${getSlotLabel(currentIndex)}</span>
         </div>
         <div class="story-card focus-callout" id="resolve-story-card" role="button" tabindex="0">
           <div class="resolve-story-trail">${storyTrailHtml}</div>
@@ -1630,16 +1672,16 @@ function renderPlanningPanel() {
   const activeActivity = getActivity(state.selectedActivity) || PLANNING_ACTIVITIES[0] || ACTIVITIES[0];
   const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
   const todayFixedCourses = state.schedule
-    .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: SLOT_NAMES[index] }))
+    .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: getSlotFullLabel(index) }))
     .filter((item) => item.locked && item.activity);
   mainPanel.innerHTML = `
     <div class="planning-shell">
       <div class="panel-title">
         <h2>今日安排</h2>
-        <span class="badge">${getWeekdayLabel(state.day)} · ${SLOT_NAMES[state.selectedSlot]}</span>
+        <span class="badge">${getWeekdayLabel(state.day)} · ${getSlotLabel(state.selectedSlot)}</span>
       </div>
       <div class="story-card focus-callout">
-        <strong>${SLOT_NAMES[state.selectedSlot]}</strong>
+        <strong>${getSlotFullLabel(state.selectedSlot)}</strong>
         <small>${selectedSlotLocked ? "这个时段来自整周课表中的固定课程，只能查看，不能改动。" : "这个时段是自由时间，可以安排课业、生活、修炼或社交。固定课程会按周课表自动带入。"}</small>
         <small>${selectedSlotLocked ? `固定课程：${selectedSlotActivity?.name || "未排课"}` : UI_TEXT.planning.eventPicked(selectedSlotActivity?.name || null)}</small>
       </div>
@@ -1698,48 +1740,96 @@ function renderPlanningPanel() {
 function renderCourseSelectionPanel() {
   const blocks = state.courseSelection.blocks || [];
   const ready = blocks.length > 0 && blocks.every((block) => block.selectedCourseId);
+  const sections = [
+    {
+      key: "required_common",
+      title: "通识必修",
+      desc: "全员都会自动带入这些固定课程，用来铺出学院的共同基础。",
+    },
+    {
+      key: "required_major",
+      title: "专业必修",
+      desc: "由当前入学原型对应的培养方向决定，同样会自动锁进整周课表。",
+    },
+    {
+      key: "elective",
+      title: "专业选修",
+      desc: "这些时段需要你从候选课程中亲自选定，决定本周偏向。",
+    },
+  ];
   mainPanel.innerHTML = `
-    <div class="planning-shell">
+    <div class="course-selection-shell">
       <div class="panel-title">
         <h2>开周选课</h2>
         <span class="badge">${getWeekdayLabel(1)} 前</span>
       </div>
       <div class="story-card focus-callout">
-        <strong>固定课程在这里一次性选定</strong>
-        <small>每组课程都有固定上课时段。你选中的课程会自动铺进整周课表，之后每天只能在剩余自由时段安排行动。</small>
-        <small>左上主舞台会实时展示整周课表预览。</small>
+        <strong>先看本周固定课，再补专业选修</strong>
+        <small>通识必修和专业必修会自动锁定到课表里；只有专业选修需要你在候选课程中做选择。</small>
+        <small>左上主舞台会实时展示整周课表预览，并标出各时段对应的时辰。</small>
       </div>
       <div class="planning-event-list">
         <div class="course-selection-list">
-          ${blocks
-            .map((block) => {
-              const selectedActivity = getActivity(block.selectedCourseId);
+          ${sections
+            .map((section) => {
+              const sectionBlocks = blocks.filter((block) => block.category === section.key);
+              if (!sectionBlocks.length) {
+                return "";
+              }
               return `
-                <div class="course-selection-card">
-                  <strong>${block.label}</strong>
-                  <small>${getCourseBlockTimingText(block)}</small>
-                  <small>${selectedActivity ? `已选：${selectedActivity.name}` : "尚未选择课程"}</small>
-                  <div class="course-option-row">
-                    ${(block.options || [])
-                      .map((courseId) => {
-                        const activity = getActivity(courseId);
-                        if (!activity) {
-                          return "";
-                        }
-                        return `
-                          <button
-                            class="ghost-button ${block.selectedCourseId === courseId ? "primary" : ""}"
-                            data-course-block="${block.id}"
-                            data-course-id="${courseId}"
-                            type="button"
-                          >
-                            ${activity.name}
-                          </button>
-                        `;
-                      })
-                      .join("")}
+                <section class="course-selection-section">
+                  <div class="panel-title">
+                    <h3>${section.title}</h3>
+                    <span class="badge">${sectionBlocks.filter((block) => block.selectedCourseId).length} / ${sectionBlocks.length}</span>
                   </div>
-                </div>
+                  <p class="tiny">${section.desc}</p>
+                  ${sectionBlocks
+                    .map((block) => {
+                      const selectedActivity = getActivity(block.selectedCourseId);
+                      return `
+                        <div class="course-selection-card">
+                          <strong>${block.label}</strong>
+                          <small>${getCourseBlockCategoryLabel(block)} · ${getCourseBlockTimingText(block)}</small>
+                          <small>${selectedActivity ? `已定：${selectedActivity.name}` : "尚未选择课程"}</small>
+                          ${
+                            block.selectionMode === "fixed"
+                              ? `
+                                <div class="story-card course-selection-fixed">
+                                  <strong>${selectedActivity?.name || "固定课程"}</strong>
+                                  <small>${selectedActivity?.summary || "这门课程会自动写入本周课表。"}</small>
+                                </div>
+                              `
+                              : `
+                                <div class="course-option-row">
+                                  ${(block.options || [])
+                                    .map((courseId) => {
+                                      const activity = getActivity(courseId);
+                                      const course = getCourseCatalogEntry(courseId);
+                                      if (!activity || !course) {
+                                        return "";
+                                      }
+                                      return `
+                                        <button
+                                          class="ghost-button ${block.selectedCourseId === courseId ? "primary" : ""}"
+                                          data-course-block="${block.id}"
+                                          data-course-id="${courseId}"
+                                          type="button"
+                                          style="--course-accent:${getCourseSkillColor(activity)};"
+                                        >
+                                          ${activity.name}
+                                          <span>${course.track} · ${course.module}</span>
+                                        </button>
+                                      `;
+                                    })
+                                    .join("")}
+                                </div>
+                              `
+                          }
+                        </div>
+                      `;
+                    })
+                    .join("")}
+                </section>
               `;
             })
             .join("")}
@@ -2038,6 +2128,8 @@ function renderTopPanel() {
       ${metric(SKILL_LABELS.sigil, state.skills.sigil)}
       ${metric(SKILL_LABELS.dao, state.skills.dao)}
       ${metric(SKILL_LABELS.craft, state.skills.craft)}
+      ${metric(SKILL_LABELS.herbal, state.skills.herbal)}
+      ${metric(SKILL_LABELS.formation, state.skills.formation)}
     </div>
   `;
   topPanel.querySelector("#stats-close-btn").addEventListener("click", () => toggleStatsPanel(false));
@@ -2200,6 +2292,8 @@ function renderMemoryPanelCompact() {
 function renderLeftPanel() {
   if (state.mode === "course_selection") {
     const blocks = state.courseSelection.blocks || [];
+    const requiredBlocks = blocks.filter((block) => block.category !== "elective");
+    const electiveBlocks = blocks.filter((block) => block.category === "elective");
     leftPanel.innerHTML = `
       <div class="panel-title">
         <h2>本周选课</h2>
@@ -2208,13 +2302,14 @@ function renderLeftPanel() {
       <div class="left-info-grid">
         <div class="left-info-card">
           <strong>选课规则</strong>
-          <small>每组课程都对应固定上课时间，选定后会自动写入整周课表。</small>
-          <small>确认课表后，课程时段会锁定，之后只能安排自由时间。</small>
+          <small>通识必修与专业必修会自动写入整周课表，专业选修需要你亲自决定。</small>
+          <small>所有固定课程确认后都会锁定，之后每天只能安排剩余自由时间。</small>
         </div>
         <div class="left-info-card">
           <strong>当前进度</strong>
-          <small>已选模块：${blocks.filter((block) => block.selectedCourseId).length} / ${blocks.length}</small>
-          <small>${blocks.every((block) => block.selectedCourseId) ? "课表已完整，可以开始本周。" : "右侧还有未选定的固定课程。"}</small>
+          <small>必修已锁定：${requiredBlocks.filter((block) => block.selectedCourseId).length} / ${requiredBlocks.length}</small>
+          <small>选修已选：${electiveBlocks.filter((block) => block.selectedCourseId).length} / ${electiveBlocks.length}</small>
+          <small>${blocks.every((block) => block.selectedCourseId) ? "课表已完整，可以开始本周。" : "右侧还有未选定的选修课。"}</small>
         </div>
       </div>
     `;
@@ -2225,7 +2320,7 @@ function renderLeftPanel() {
     const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
     const resolvingSlotIndex =
       state.mode === "resolving" ? Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1) : state.selectedSlot;
-    const currentSlotName = SLOT_NAMES[resolvingSlotIndex];
+    const currentSlotName = getSlotLabel(resolvingSlotIndex);
     const currentSlotActivity = getActivity(state.schedule[resolvingSlotIndex]);
     const currentSlotLocked = isPlanningSlotLocked(resolvingSlotIndex);
     leftPanel.innerHTML = `

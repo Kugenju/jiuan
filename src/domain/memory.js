@@ -9,13 +9,23 @@ function getZoneSkillKey(zone) {
   return null;
 }
 
+function normalizeSkillZone(skill) {
+  if (skill === "herbal") {
+    return "dao";
+  }
+  if (skill === "formation") {
+    return "sigil";
+  }
+  return skill || null;
+}
+
 function resolvePlacementZoneForPiece(piece, fragmentTypes, getMainFocusSkill) {
   if (!piece || !fragmentTypes[piece.type]) {
     return null;
   }
   const meta = fragmentTypes[piece.type];
   if (meta.zoneFromSkill) {
-    return piece.skill || getMainFocusSkill?.() || meta.fallbackZone || null;
+    return normalizeSkillZone(piece.skill || getMainFocusSkill?.() || meta.fallbackZone || null);
   }
   return meta.zone || null;
 }
