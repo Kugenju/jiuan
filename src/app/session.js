@@ -24,14 +24,30 @@ const {
   clearPlanningSchedule,
 } = window.GAME_RUNTIME;
 
+function normalizeTotalWeeks(value) {
+  const parsed = typeof value === "string" ? Number(value.trim()) : Number(value);
+  const normalized = Math.floor(parsed);
+  if (!Number.isFinite(parsed) || normalized <= 0) {
+    return 4;
+  }
+  return normalized;
+}
+
 function createGameState(options) {
   const playerState = createBasePlayerState();
+  const totalWeeks = normalizeTotalWeeks(options.totalWeeks);
+  const createRouteStressState =
+    typeof options.createRouteStressState === "function"
+      ? options.createRouteStressState
+      : () => ({ study: 0, work: 0, training: 0 });
 
   return {
     mode: "menu",
     rng: options.createRng(),
     day: 1,
     totalDays: options.totalDays,
+    week: 1,
+    totalWeeks,
     selectedArchetype: options.initialArchetypeId,
     selectedSlot: 0,
     selectedActivity: options.initialActivityId,
@@ -80,6 +96,12 @@ function createGameState(options) {
       cursor: { kind: "node", id: options.memoryCenterNodeId },
       lastSummary: options.copy.memoryPendingSummary,
     },
+    routeStress: createRouteStressState(),
+    weeklyReports: [],
+    strategyHistory: [],
+    weekActions: [],
+    weekTracker: null,
+    finalSummary: null,
     summary: null,
   };
 }

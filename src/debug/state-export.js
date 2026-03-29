@@ -1,6 +1,10 @@
 (() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
+function snapshot(value) {
+  return structuredClone(value);
+}
+
 function buildTextStateExport(rootState, context) {
   const selectedPiece =
     rootState.memory.pieces.find((piece) => piece.id === rootState.memory.selectedPiece) || null;
@@ -22,8 +26,13 @@ function buildTextStateExport(rootState, context) {
     coordinate_system: context.uiText.stateExport.coordinateSystem,
     mode: rootState.mode,
     day: rootState.day,
+    week: rootState.week,
+    total_weeks: rootState.totalWeeks,
     selected_archetype: rootState.selectedArchetype,
     current_story: rootState.currentStory.title,
+    route_stress: snapshot(rootState.routeStress || { study: 0, work: 0, training: 0 }),
+    weekly_reports: snapshot(rootState.weeklyReports || []),
+    strategy_history: snapshot(rootState.strategyHistory || []),
     schedule: context.slotNames.map((slot, index) => ({
       slot,
       action: context.getActivity(rootState.schedule[index])?.name || context.uiText.common.unassigned,
@@ -47,11 +56,11 @@ function buildTextStateExport(rootState, context) {
         options: (block.options || []).map((courseId) => context.getActivity(courseId)?.name || courseId),
       })),
     },
-    stats: rootState.stats,
-    skills: rootState.skills,
-    resources: rootState.resources,
-    relationships: rootState.relationships,
-    ui: rootState.ui,
+    stats: snapshot(rootState.stats),
+    skills: snapshot(rootState.skills),
+    resources: snapshot(rootState.resources),
+    relationships: snapshot(rootState.relationships),
+    ui: snapshot(rootState.ui),
     resolving: {
       current_slot_index: rootState.resolvingFlow.slotIndex,
       phase: rootState.resolvingFlow.phase,
@@ -116,7 +125,7 @@ function buildTextStateExport(rootState, context) {
         day: bridge?.day ?? null,
       })),
     },
-    summary: rootState.summary,
+    summary: snapshot(rootState.summary),
   };
 }
 
