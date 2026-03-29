@@ -167,7 +167,11 @@ function finishNightFlow(rootState, context) {
   };
 
   if (rootState.day >= rootState.totalDays) {
-    context.finishRun();
+    if (typeof context.finishWeek === "function") {
+      context.finishWeek();
+    } else {
+      context.finishRun();
+    }
     return { ok: true, finishedRun: true };
   }
 

@@ -33,6 +33,23 @@ function normalizeTotalWeeks(value) {
   return normalized;
 }
 
+function buildWeekStartStory(context, week) {
+  if (typeof context.copy?.weekStartStory === "function") {
+    return context.copy.weekStartStory(week);
+  }
+  if (context.copy?.weekStartStory) {
+    return structuredClone(context.copy.weekStartStory);
+  }
+  if (context.copy?.runStartStory) {
+    return structuredClone(context.copy.runStartStory);
+  }
+  return {
+    title: `第 ${week} 周开始`,
+    body: "沿用既有课表，继续安排这一周的自由时段。",
+    speaker: "太学院",
+  };
+}
+
 function createGameState(options) {
   const playerState = createBasePlayerState();
   const totalWeeks = normalizeTotalWeeks(options.totalWeeks);
@@ -209,6 +226,46 @@ function dispatchSessionCommand(rootState, command, context) {
     case "run/restart":
       resetGameState(rootState, context.sessionOptions);
       return true;
+
+    case "run/continue-week": {
+      if (rootState.mode !== "summary" || !rootState.summary?.canContinue) {
+        return false;
+      }
+
+      rootState.week += 1;
+      rootState.day = 1;
+      rootState.mode = "planning";
+      rootState.scene = "campus";
+      rootState.progress = 0;
+      rootState.resolvingIndex = 0;
+      rootState.phaseTimer = 0;
+      rootState.resolvingFlow = {
+        phase: "idle",
+        slotIndex: 0,
+        segmentIndex: 0,
+        autoplay: false,
+        autoplayDelay: 1.05,
+        autoplayTimer: 0,
+        storyTrail: [],
+        justAppended: false,
+      };
+      rootState.dayModifier = null;
+      rootState.summary = null;
+      rootState.weekTracker = null;
+      rootState.weekActions = [];
+      rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
+      rootState.selectedActivity = context.initialActivityId;
+      rootState.currentStory = buildWeekStartStory(context, rootState.week);
+      rootState.memory.pieces = [];
+      rootState.memory.selectedPiece = null;
+      rootState.memory.dragPieceId = null;
+      rootState.memory.placementsToday = [];
+      rootState.memory.cursor = { kind: "node", id: context.memoryCenterNodeId };
+      rootState.memory.lastSummary = context.copy.memoryPendingSummary;
+      return true;
+    }
 
     default:
       return false;

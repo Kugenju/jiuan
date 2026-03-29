@@ -33,7 +33,9 @@ const UI_TEXT = {
     memory(day) {
       return `第 ${day} 夜正在建构记忆`;
     },
-    summary: "第一周结算完成",
+    summary(week) {
+      return `第 ${week} 周结算完成`;
+    },
     menu: "选择入学测评原型后开始",
   },
   canvas: {
@@ -53,8 +55,12 @@ const UI_TEXT = {
     },
     memoryTitle: "夜间记忆建构",
     memorySubtitle: "先以灵台锚片解锁灰域节点，再于节点建塔，以衔接塔贯通边位。",
-    summaryTitle: "第一周结算",
-    summarySubtitle: "从策划案中抽出的核心循环已经跑完一周。",
+    summaryTitle(week, totalWeeks) {
+      return week >= totalWeeks ? "阶段总评" : `第 ${week} 周结算`;
+    },
+    summarySubtitle(week, totalWeeks) {
+      return week >= totalWeeks ? "固定课表下的多周验证已经跑完，可以回看整段策略表现。" : "这一周已经结束，接下来可以决定是否继续推进下一周。";
+    },
     summaryBest(skillLabel, level) {
       return `最佳方向：${skillLabel} ${level} 级`;
     },
@@ -179,7 +185,12 @@ const UI_TEXT = {
     startBtn: "开始第一周",
   },
   summary: {
-    panelTitle: "本周结算",
+    panelTitle(week, totalWeeks) {
+      return week >= totalWeeks ? "阶段总评" : `第 ${week} 周结算`;
+    },
+    continueBtn(week, totalWeeks) {
+      return week >= totalWeeks ? "查看总评" : `进入第 ${week + 1} 周`;
+    },
     restartBtn: "重新开始",
     unranked: "未评级",
     resourceBalance(resourceLabel) {

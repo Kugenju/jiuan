@@ -19,6 +19,13 @@ const COPY = {
     title: "入学完成",
     body: "你进入太学院第一周。课程、工坊、社交与修行都要自己安排。",
   },
+  weekStartStory(week) {
+    return {
+      title: `第 ${week} 周开始`,
+      body: "课表沿用上周安排，本周只考验你如何分配自由时段，以及极端策略还能撑多久。",
+      speaker: "教习司",
+    };
+  },
   incompleteSchedule: {
     title: "日程未满",
     body: "今天的可自由安排时段还没有填满。固定课程会自动带入，其余时段仍需你手动安排。",
@@ -126,14 +133,29 @@ const COPY = {
     },
   },
   summary: {
-    defaultMajorBeat: "第一周还在铺垫人脉和学业。",
-    clueMajorBeat: "你拿到了失踪舍友的第一条线索。",
-    title: "第一周结算",
-    body(rank, bestSkillLabel) {
-      return `你以 ${rank} 的灵力评定结束了第一周。最强项是 ${bestSkillLabel}。`;
+    defaultMajorBeat: "这一周你仍在铺垫人脉和学业。",
+    clueMajorBeat: "你又向失踪舍友的线索推进了一步。",
+    title(week) {
+      return `第 ${week} 周结算`;
+    },
+    body(rank, bestSkillLabel, payload = {}) {
+      const routeLabels = {
+        study: "课业",
+        work: "打工",
+        training: "修炼",
+        balanced: "均衡",
+      };
+      const routeLabel = routeLabels[payload.dominantRoute] || "均衡";
+      const routeText =
+        payload.dominantRoute === "balanced"
+          ? "本周自由时段走的是均衡路线。"
+          : `本周自由时段主路线偏向${routeLabel}。`;
+      return `你以 ${rank} 的评定结束了第 ${payload.week || 1} 周。当前最强项是 ${bestSkillLabel}。${routeText}`;
     },
     speaker: "太学院",
-    logTitle: "周结算",
+    logTitle(week) {
+      return `第 ${week} 周结算`;
+    },
   },
 };
 
