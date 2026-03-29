@@ -2,6 +2,7 @@ node_modules/
 dist-desktop/
 output/
 tmp/
+.worktrees/
 
 .DS_Store
 Thumbs.db
