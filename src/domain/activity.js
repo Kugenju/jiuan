@@ -116,19 +116,89 @@ function getActivitySpeaker(activity, uiText) {
   return uiText.speakers.routine;
 }
 
-function applyAssignmentProtocol(rootState, activity, context, notes) {
+function getFatiguePenaltyStep(rootState, activity) {
+  if (activity.tone === "life") {
+    return 0;
+  }
+  if (rootState.stats.fatigue >= 8) {
+    return 2;
+  }
+  if (rootState.stats.fatigue >= 6) {
+    return 1;
+  }
+  return 0;
+}
+
+function reducePositivePackByPenalty(pack, penaltyStep) {
+  if (!pack) {
+    return null;
+  }
+  const adjustedEntries = Object.entries(pack)
+    .map(([key, value]) => {
+      if (typeof value !== "number" || value <= 0) {
+        return [key, value];
+      }
+      return [key, Math.max(0, value - penaltyStep)];
+    })
+    .filter(([, value]) => value !== 0);
+
+  return adjustedEntries.length > 0 ? Object.fromEntries(adjustedEntries) : null;
+}
+
+function applyActivityEffectsWithFatiguePenalty(rootState, bundle, penaltyStep) {
+  if (!bundle) {
+    return;
+  }
+  if (penaltyStep <= 0) {
+    applyEffectBundleToRoot(rootState, bundle);
+    return;
+  }
+
+  applyEffectBundleToRoot(rootState, {
+    stats: reducePositivePackByPenalty(bundle.stats, penaltyStep),
+    skills: reducePositivePackByPenalty(bundle.skills, penaltyStep),
+    resources: reducePositivePackByPenalty(bundle.resources, penaltyStep),
+    relationships: reducePositivePackByPenalty(bundle.relationships, penaltyStep),
+  });
+}
+
+function countTrailingActivityStreak(actions, activityId) {
+  let streak = 0;
+  for (let index = actions.length - 1; index >= 0; index -= 1) {
+    if (actions[index] !== activityId) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
+function getAssignmentBonusAmount(rootState, activity, fatiguePenaltyStep) {
+  const baseAmount = Number(activity.assignment.amount || 0);
+  if (baseAmount <= 0) {
+    return 0;
+  }
+  const streakPenalty = countTrailingActivityStreak(rootState.today.actions || [], activity.id) >= 2 ? 1 : 0;
+  const fatiguePenalty = fatiguePenaltyStep > 0 ? 1 : 0;
+  return Math.max(0, baseAmount - streakPenalty - fatiguePenalty);
+}
+
+function applyAssignmentProtocol(rootState, activity, context, notes, fatiguePenaltyStep) {
   if (activity.kind !== "assignment" || !activity.assignment) {
     return;
   }
 
   const skill = resolveAssignmentSkill(rootState, activity, context);
+  const amount = getAssignmentBonusAmount(rootState, activity, fatiguePenaltyStep);
   if (skill) {
-    rootState.skills[skill] += activity.assignment.amount;
-    notes.push(
-      activity.assignment.noteTemplate
-        .replace("{skill}", context.skillLabels[skill])
-        .replace("{amount}", String(activity.assignment.amount))
-    );
+    if (amount > 0) {
+      rootState.skills[skill] += amount;
+      notes.push(
+        activity.assignment.noteTemplate
+          .replace("{skill}", context.skillLabels[skill])
+          .replace("{amount}", String(amount))
+      );
+    }
     return;
   }
 
@@ -141,6 +211,7 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
   const preferredSlots = Array.isArray(activity.preferred) ? activity.preferred : [];
   const isPreferred = preferredSlots.includes(slotIndex);
   const modifierNote = consumeDayModifierForActivity(rootState, activity, context.copy);
+  const fatiguePenaltyStep = getFatiguePenaltyStep(rootState, activity);
 
   trackActivityOnTodayState(rootState, activity, slotIndex);
 
@@ -149,19 +220,19 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
     notes.push(modifierNote);
   }
 
-  applyEffectBundleToRoot(rootState, activity.effects);
+  applyActivityEffectsWithFatiguePenalty(rootState, activity.effects, fatiguePenaltyStep);
   if (activity.notes?.base) {
     notes.push(activity.notes.base);
   }
 
   if (isPreferred && activity.preferredEffects) {
-    applyEffectBundleToRoot(rootState, activity.preferredEffects);
+    applyActivityEffectsWithFatiguePenalty(rootState, activity.preferredEffects, fatiguePenaltyStep);
     if (activity.notes?.preferred) {
       notes.push(activity.notes.preferred);
     }
   }
 
-  applyAssignmentProtocol(rootState, activity, context, notes);
+  applyAssignmentProtocol(rootState, activity, context, notes, fatiguePenaltyStep);
 
   triggerStoryBeatForActivity(rootState, activity, notes, context.storyBeats);
   normalizePlayerState(rootState);

@@ -410,8 +410,8 @@ const ACTIVITIES = [
     scene: "desk",
     preferred: [4, 5],
     effects: {
-      stats: { memory: 1, selfControl: 1 },
-      resources: { insight: 2 },
+      stats: { memory: 1, selfControl: 1, fatigue: 1 },
+      resources: { insight: 1 },
     },
     preferredEffects: {
       stats: { memory: 1 },
