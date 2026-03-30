@@ -294,6 +294,21 @@ const ACTIVITIES = [
     },
   },
   {
+    id: "artifact_refining_task",
+    name: "炼器任务",
+    tone: "study",
+    kind: "task",
+    scene: "workshop",
+    skill: "craft",
+    summary: "在限时内完成一轮炼器考核，成功则获得炼器进展与周评价标记。",
+    storySegments: [
+      "工坊案上摆着一组等待定型的器胚，先生只给了你一次次重开的机会，不给额外提示。",
+    ],
+    notes: {
+      base: "炼器任务会在独立结算中判断成败。",
+    },
+  },
+  {
     id: "tribulation_forecasting",
     name: "上《天劫预测学》",
     tone: "study",
