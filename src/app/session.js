@@ -57,6 +57,29 @@ function createGameState(options) {
     typeof options.createRouteStressState === "function"
       ? options.createRouteStressState
       : () => ({ study: 0, work: 0, training: 0 });
+  const createTaskState =
+    typeof options.createTaskState === "function"
+      ? options.createTaskState
+      : typeof window.GAME_RUNTIME.createTaskState === "function"
+      ? window.GAME_RUNTIME.createTaskState
+      : () => ({
+          active: [],
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          completedMarks: [],
+          lastStory: null,
+        });
+  const createTaskRuntimeState =
+    typeof options.createTaskRuntimeState === "function"
+      ? options.createTaskRuntimeState
+      : typeof window.GAME_RUNTIME.createTaskRuntimeState === "function"
+      ? window.GAME_RUNTIME.createTaskRuntimeState
+      : () => ({
+          activeTaskId: null,
+          pendingSlotIndex: null,
+          mode: null,
+          result: null,
+          refining: null,
+        });
 
   return {
     mode: "menu",
@@ -120,6 +143,8 @@ function createGameState(options) {
     weekTracker: null,
     finalSummary: null,
     summary: null,
+    tasks: createTaskState(),
+    taskRuntime: createTaskRuntimeState(),
   };
 }
 
@@ -199,6 +224,12 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
+      if (typeof context.syncWeeklyTaskProgress === "function") {
+        context.syncWeeklyTaskProgress(rootState, {
+          taskDefs: context.taskDefs,
+          getActivity: context.getActivity,
+        });
+      }
       rootState.currentStory = structuredClone(context.copy.runStartStory);
       return true;
     }
@@ -257,6 +288,12 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
+      if (typeof context.syncWeeklyTaskProgress === "function") {
+        context.syncWeeklyTaskProgress(rootState, {
+          taskDefs: context.taskDefs,
+          getActivity: context.getActivity,
+        });
+      }
       rootState.currentStory = buildWeekStartStory(context, rootState.week);
       rootState.memory.pieces = [];
       rootState.memory.selectedPiece = null;

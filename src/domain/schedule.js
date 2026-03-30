@@ -137,6 +137,9 @@ function assignPlanningActivity(rootState, activityId, options) {
   if (!activity || activity.kind === "course") {
     return false;
   }
+  if (typeof options.isActivityAssignable === "function" && !options.isActivityAssignable(rootState, activity)) {
+    return false;
+  }
   rootState.selectedActivity = activityId;
   rootState.schedule[rootState.selectedSlot] = activityId;
   return true;
@@ -159,6 +162,9 @@ function applySchedulePreset(rootState, preset, options) {
     }
     const activity = options.getActivity(activityId);
     if (!activity || activity.kind === "course") {
+      return;
+    }
+    if (typeof options.isActivityAssignable === "function" && !options.isActivityAssignable(rootState, activity)) {
       return;
     }
     rootState.schedule[index] = activityId;
