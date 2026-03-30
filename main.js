@@ -408,6 +408,33 @@ function expireTimedTasksForDayForState(rootState, currentDay, options = {}) {
   });
 }
 
+function syncWeeklyTaskProgressForState(rootState, options = {}) {
+  const getActivityForState = typeof options.getActivity === "function" ? options.getActivity : getActivity;
+  rootState.tasks = rootState.tasks || {
+    active: [],
+    weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+    completedMarks: [],
+    lastStory: null,
+  };
+  rootState.tasks.weeklyProgress = rootState.tasks.weeklyProgress || { craftCompleted: 0, craftTotal: 0 };
+  const craftCompleted = Number(rootState.tasks.weeklyProgress.craftCompleted);
+  rootState.tasks.weeklyProgress.craftCompleted = Number.isFinite(craftCompleted) ? craftCompleted : 0;
+  rootState.tasks.weeklyProgress.craftTotal = 0;
+  if (typeof getActivityForState !== "function") {
+    return;
+  }
+
+  const craftTotal = (rootState.weeklyTimetable || []).flat().reduce((count, activityId) => {
+    const activity = activityId ? getActivityForState(activityId) : null;
+    return count + (activity?.kind === "course" && activity.skill === "craft" ? 1 : 0);
+  }, 0);
+
+  rootState.tasks.weeklyProgress.craftTotal = craftTotal;
+  if (rootState.tasks.weeklyProgress.craftCompleted > craftTotal) {
+    rootState.tasks.weeklyProgress.craftCompleted = craftTotal;
+  }
+}
+
 function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) {
   const taskDef = findTaskDefByActivityId(activity.id, options.taskDefs || TASK_DEFS);
   const activeTask = findActiveTaskForActivity(rootState, activity.id);
@@ -753,6 +780,7 @@ function runSessionCommand(command) {
     uiText: UI_TEXT,
     getArchetype,
     getActivity,
+    syncWeeklyTaskProgress: syncWeeklyTaskProgressForState,
     isActivityAssignable: isPlanningActivityAssignable,
     addLog,
     sessionOptions,
