@@ -114,7 +114,7 @@ test("task system supports weekly lifecycle unlock and expiry", () => {
       activityId: "artifact_refining_task",
       status: "active",
       unlockDay: 3,
-      expiresOnDay: 6,
+      expiresOnDay: 5,
       attemptCount: 0,
       rewardClaimed: false,
     },
@@ -134,6 +134,83 @@ test("task system supports weekly lifecycle unlock and expiry", () => {
     body: "artifact",
     speaker: "system",
   });
+});
+
+test("syncWeeklyTaskProgress is defensive for missing getActivity and null slots", () => {
+  const windowObject = loadScripts(["src/domain/task-system.js"]);
+  const { createTaskState, syncWeeklyTaskProgress } = windowObject.GAME_RUNTIME;
+
+  const rootState = {
+    weeklyTimetable: [["course_craft_a", null, undefined, ""], [false, "course_other"]],
+    tasks: createTaskState(),
+  };
+
+  syncWeeklyTaskProgress(rootState, {});
+  assert.equal(rootState.tasks.weeklyProgress.craftTotal, 0);
+
+  syncWeeklyTaskProgress(rootState, {
+    getActivity: (activityId) => {
+      if (activityId === "course_craft_a") {
+        return { id: activityId, kind: "course", skill: "craft" };
+      }
+      return { id: activityId, kind: "course", skill: "dao" };
+    },
+  });
+  assert.equal(rootState.tasks.weeklyProgress.craftTotal, 1);
+});
+
+test("lifecycle methods normalize partial persisted task state and expiry day math", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/task-system.js"]);
+  const { syncWeeklyTaskProgress, handleResolvedCourseTaskProgress, expireTimedTasksForDay } = windowObject.GAME_RUNTIME;
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+
+  const rootState = {
+    week: 1,
+    day: 4,
+    weeklyTimetable: [["course_craft_a"]],
+    tasks: {
+      weeklyProgress: {},
+    },
+    currentStory: null,
+  };
+
+  syncWeeklyTaskProgress(rootState, {
+    taskDefs: TASK_DEFS,
+    getActivity: (activityId) => ({ id: activityId, kind: "course", skill: "craft" }),
+  });
+  assert.deepEqual(realmSafe(rootState.tasks.completedMarks), []);
+  assert.equal(rootState.tasks.lastStory, null);
+  assert.equal(rootState.tasks.weeklyProgress.craftCompleted, 0);
+  assert.equal(rootState.tasks.weeklyProgress.craftTotal, 1);
+
+  const unlocked = handleResolvedCourseTaskProgress(
+    rootState,
+    { id: "course_craft_a", kind: "course", skill: "craft" },
+    {
+      taskDefs: TASK_DEFS,
+      copy: {
+        taskUnlocked: () => ({ title: "unlock", body: "unlock", speaker: "system" }),
+      },
+    }
+  );
+
+  assert.ok(unlocked);
+  assert.equal(unlocked.unlockDay, 4);
+  assert.equal(unlocked.expiresOnDay, 6);
+
+  expireTimedTasksForDay(rootState, 6, {
+    copy: {
+      taskExpired: () => ({ title: "expired", body: "artifact", speaker: "system" }),
+    },
+  });
+  assert.equal(rootState.tasks.active[0].status, "active");
+
+  expireTimedTasksForDay(rootState, 7, {
+    copy: {
+      taskExpired: () => ({ title: "expired", body: "artifact", speaker: "system" }),
+    },
+  });
+  assert.equal(rootState.tasks.active[0].status, "expired");
 });
 
 test("dispatchSessionCommand falls back to runtime syncWeeklyTaskProgress when context does not inject it", () => {

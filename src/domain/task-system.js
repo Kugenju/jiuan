@@ -23,19 +23,39 @@ function createTaskRuntimeState() {
   };
 }
 
+function normalizeNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function ensureTaskState(rootState) {
-  if (!rootState.tasks) {
-    rootState.tasks = createTaskState();
-  }
-  if (!rootState.tasks.weeklyProgress) {
-    rootState.tasks.weeklyProgress = { craftCompleted: 0, craftTotal: 0 };
-  }
+  const base = rootState.tasks && typeof rootState.tasks === "object" ? rootState.tasks : {};
+  const weeklyProgress =
+    base.weeklyProgress && typeof base.weeklyProgress === "object" ? base.weeklyProgress : {};
+  rootState.tasks = {
+    ...base,
+    active: Array.isArray(base.active) ? base.active : [],
+    weeklyProgress: {
+      craftCompleted: normalizeNumber(weeklyProgress.craftCompleted, 0),
+      craftTotal: normalizeNumber(weeklyProgress.craftTotal, 0),
+    },
+    completedMarks: Array.isArray(base.completedMarks) ? base.completedMarks : [],
+    lastStory: Object.prototype.hasOwnProperty.call(base, "lastStory") ? base.lastStory : null,
+  };
 }
 
 function syncWeeklyTaskProgress(rootState, context) {
   ensureTaskState(rootState);
+  const getActivity = typeof context?.getActivity === "function" ? context.getActivity : null;
+  if (!getActivity) {
+    rootState.tasks.weeklyProgress.craftTotal = 0;
+    rootState.tasks.weeklyProgress.craftCompleted = 0;
+    return;
+  }
   const total = (rootState.weeklyTimetable || []).flat().reduce((count, activityId) => {
-    const activity = context.getActivity(activityId);
+    if (!activityId) {
+      return count;
+    }
+    const activity = getActivity(activityId);
     return count + (activity?.kind === "course" && activity.skill === "craft" ? 1 : 0);
   }, 0);
   rootState.tasks.weeklyProgress.craftTotal = total;
@@ -45,13 +65,14 @@ function syncWeeklyTaskProgress(rootState, context) {
 }
 
 function buildTimedTaskInstance(taskDef, rootState) {
+  const durationDays = Math.max(1, normalizeNumber(taskDef.durationDays, 1));
   return {
     id: `week-${rootState.week}-${taskDef.id}`,
     type: taskDef.id,
     activityId: taskDef.activityId,
     status: "active",
     unlockDay: rootState.day,
-    expiresOnDay: rootState.day + taskDef.durationDays,
+    expiresOnDay: rootState.day + durationDays - 1,
     attemptCount: 0,
     rewardClaimed: false,
   };
