@@ -106,6 +106,7 @@
   function placeRefiningCardInSlot(attempt, cardId, slotIndex) {
     if (
       !attempt ||
+      !Array.isArray(attempt.deck) ||
       !Array.isArray(attempt.slots) ||
       !Number.isInteger(slotIndex) ||
       slotIndex < 0 ||
@@ -157,9 +158,17 @@
 
   function hasRequiredMaterials(normalizedTypes, requirements) {
     const counts = getTypeCounts(normalizedTypes);
-    const needXuantie = (requirements && requirements.xuantie) || 0;
-    const needLingshi = (requirements && requirements.lingshi) || 0;
-    return (counts.xuantie || 0) >= needXuantie && (counts.lingshi || 0) >= needLingshi;
+    if (!requirements || typeof requirements !== "object") {
+      return true;
+    }
+
+    return Object.keys(requirements).every((materialType) => {
+      const requiredCount = requirements[materialType];
+      if (typeof requiredCount !== "number" || requiredCount <= 0) {
+        return true;
+      }
+      return (counts[materialType] || 0) >= requiredCount;
+    });
   }
 
   function buildTypeVariants(baseTypes, wildcardCount, baseMaterials) {

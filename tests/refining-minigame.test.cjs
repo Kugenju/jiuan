@@ -106,6 +106,16 @@ test("placing cards only works for revealed and unused cards", () => {
   assert.equal(placeRefiningCardInSlot(attempt, attempt.deck[1].id, 0), false);
 });
 
+test("placeRefiningCardInSlot returns false for malformed attempt without deck", () => {
+  const windowObject = loadScripts(["src/domain/refining-minigame.js"]);
+  const { placeRefiningCardInSlot } = windowObject.GAME_RUNTIME;
+  const malformedAttempt = {
+    slots: [null, null, null],
+  };
+
+  assert.equal(placeRefiningCardInSlot(malformedAttempt, "card-0", 0), false);
+});
+
 test("revealRefiningCard rejects malformed revealsRemaining state", () => {
   const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
   const { TASK_DEFS } = windowObject.GAME_DATA;
@@ -160,4 +170,34 @@ test("resolving with fewer than three placed cards returns incomplete non-succes
   assert.equal(result.complete, false);
   assert.equal(result.success, false);
   assert.equal(result.score, 0);
+});
+
+test("resolveRefiningAttempt respects mujing in materialRequirements", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningAttemptState, placeRefiningCardInSlot, resolveRefiningAttempt } = windowObject.GAME_RUNTIME;
+
+  const attempt = createRefiningAttemptState(TASK_DEFS.artifact_refining, makeRng(8));
+  const needMujingTaskDef = {
+    ...TASK_DEFS.artifact_refining,
+    objective: {
+      ...TASK_DEFS.artifact_refining.objective,
+      scoreTarget: 0,
+      materialRequirements: {
+        mujing: 1,
+      },
+    },
+  };
+  const xuantieCards = attempt.deck.filter((card) => card.type === "xuantie").slice(0, 3);
+  xuantieCards.forEach((card) => {
+    card.revealed = true;
+  });
+
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[0].id, 0), true);
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[1].id, 1), true);
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[2].id, 2), true);
+
+  const result = resolveRefiningAttempt(attempt, needMujingTaskDef);
+  assert.equal(result.complete, true);
+  assert.equal(result.success, false);
 });
