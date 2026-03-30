@@ -239,7 +239,14 @@
     const recipeKey = (best && best.recipeKey) || "";
     const score = (best && best.score) || 0;
     const objective = (taskDef && taskDef.objective) || {};
+    const hasValidObjective = !!(
+      taskDef &&
+      typeof taskDef === "object" &&
+      taskDef.objective &&
+      typeof taskDef.objective === "object"
+    );
     const success =
+      hasValidObjective &&
       score >= (objective.scoreTarget || 0) &&
       hasRequiredMaterials(normalizedTypes, objective.materialRequirements || {});
 

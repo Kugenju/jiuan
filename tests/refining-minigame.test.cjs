@@ -201,3 +201,24 @@ test("resolveRefiningAttempt respects mujing in materialRequirements", () => {
   assert.equal(result.complete, true);
   assert.equal(result.success, false);
 });
+
+test("resolveRefiningAttempt does not succeed when taskDef is missing", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningAttemptState, placeRefiningCardInSlot, resolveRefiningAttempt } = windowObject.GAME_RUNTIME;
+
+  const attempt = createRefiningAttemptState(TASK_DEFS.artifact_refining, makeRng(9));
+  const xuantieCards = attempt.deck.filter((card) => card.type === "xuantie").slice(0, 2);
+  const lingshiCard = attempt.deck.find((card) => card.type === "lingshi");
+  [xuantieCards[0], xuantieCards[1], lingshiCard].forEach((card) => {
+    card.revealed = true;
+  });
+
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[0].id, 0), true);
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[1].id, 1), true);
+  assert.equal(placeRefiningCardInSlot(attempt, lingshiCard.id, 2), true);
+
+  const result = resolveRefiningAttempt(attempt, null);
+  assert.equal(result.complete, true);
+  assert.equal(result.success, false);
+});
