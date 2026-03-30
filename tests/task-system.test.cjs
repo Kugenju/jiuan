@@ -135,3 +135,76 @@ test("task system supports weekly lifecycle unlock and expiry", () => {
     speaker: "system",
   });
 });
+
+test("dispatchSessionCommand falls back to runtime syncWeeklyTaskProgress when context does not inject it", () => {
+  const runtime = {
+    createBasePlayerState: () => ({
+      resources: {},
+      stats: {},
+      skills: {},
+      relationships: {},
+    }),
+    resetPlayerStateOnRoot: () => {},
+    applyArchetypeEffectToRoot: () => {},
+    createEmptySchedule: () => [null, null],
+    createEmptyWeeklyTimetable: () => [[null, null]],
+    createEmptyScheduleLocks: () => [false, false],
+    cloneCourseSelectionBlocks: () => [],
+    buildWeeklyTimetableFromCourseSelection: () => [["course_craft_a", "course_dao"]],
+    isCourseSelectionComplete: () => true,
+    pickCourseForBlock: () => true,
+    buildDailyScheduleFromWeeklyTimetable: (weeklyTimetable, day) => weeklyTimetable[day - 1].slice(),
+    buildScheduleLocksFromWeeklyTimetable: (weeklyTimetable, day) => weeklyTimetable[day - 1].map(Boolean),
+    findSchedulePreset: () => null,
+    findNextEditableSlot: () => 0,
+    setSelectedPlanningSlot: () => true,
+    assignPlanningActivity: () => true,
+    applySchedulePreset: () => true,
+    clearPlanningSchedule: () => true,
+  };
+  const windowObject = loadScripts(["src/domain/task-system.js", "src/app/session.js"], { runtime });
+  const { createGameState, dispatchSessionCommand } = windowObject.GAME_RUNTIME;
+
+  const rootState = createGameState({
+    createRng: () => () => 0.1,
+    totalDays: 1,
+    totalWeeks: 4,
+    slotCount: 2,
+    initialArchetypeId: "starter",
+    initialActivityId: "homework",
+    copy: {
+      initialStory: { title: "start", body: "", speaker: "narrator" },
+      introLog: { title: "intro", body: "intro" },
+      runStartStory: { title: "run", body: "run", speaker: "narrator" },
+      memoryPendingSummary: "pending",
+    },
+    createStoryFlags: () => ({ introDone: false }),
+    createTodayState: () => ({ actions: [] }),
+    createMemoryBoardState: () => [],
+    createMemoryBridgeState: () => [],
+    memoryCenterNodeId: 0,
+  });
+  rootState.mode = "course_selection";
+  rootState.courseSelection.blocks = [{ id: "b1", selectedCourseId: "course_craft_a" }];
+
+  const ok = dispatchSessionCommand(rootState, { type: "course/confirm" }, {
+    totalDays: 1,
+    slotCount: 2,
+    initialActivityId: "homework",
+    copy: {
+      runStartStory: { title: "run", body: "run", speaker: "narrator" },
+    },
+    getActivity: (activityId) => {
+      if (activityId === "course_craft_a") {
+        return { id: activityId, kind: "course", skill: "craft" };
+      }
+      if (activityId === "course_dao") {
+        return { id: activityId, kind: "course", skill: "dao" };
+      }
+      return { id: activityId, kind: "normal" };
+    },
+  });
+
+  assert.equal(ok, true);
+  assert.equal(rootState.tasks.weeklyProgress.craftTotal, 1);
+});

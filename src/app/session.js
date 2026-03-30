@@ -6,6 +6,7 @@ const {
   resetPlayerStateOnRoot,
   applyArchetypeEffectToRoot,
 } = window.GAME_RUNTIME;
+const { syncWeeklyTaskProgress: syncWeeklyTaskProgressFromRuntime } = window.GAME_RUNTIME;
 const {
   createEmptySchedule,
   createEmptyWeeklyTimetable,
@@ -156,6 +157,17 @@ function resetGameState(targetState, options) {
   return targetState;
 }
 
+function syncTaskProgressForSession(rootState, context) {
+  const syncWeeklyTaskProgress = context.syncWeeklyTaskProgress || syncWeeklyTaskProgressFromRuntime;
+  if (typeof syncWeeklyTaskProgress !== "function") {
+    return;
+  }
+  syncWeeklyTaskProgress(rootState, {
+    taskDefs: context.taskDefs,
+    getActivity: context.getActivity,
+  });
+}
+
 function dispatchSessionCommand(rootState, command, context) {
   switch (command.type) {
     case "archetype/select": {
@@ -224,12 +236,7 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
-      if (typeof context.syncWeeklyTaskProgress === "function") {
-        context.syncWeeklyTaskProgress(rootState, {
-          taskDefs: context.taskDefs,
-          getActivity: context.getActivity,
-        });
-      }
+      syncTaskProgressForSession(rootState, context);
       rootState.currentStory = structuredClone(context.copy.runStartStory);
       return true;
     }
@@ -288,12 +295,7 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
-      if (typeof context.syncWeeklyTaskProgress === "function") {
-        context.syncWeeklyTaskProgress(rootState, {
-          taskDefs: context.taskDefs,
-          getActivity: context.getActivity,
-        });
-      }
+      syncTaskProgressForSession(rootState, context);
       rootState.currentStory = buildWeekStartStory(context, rootState.week);
       rootState.memory.pieces = [];
       rootState.memory.selectedPiece = null;
