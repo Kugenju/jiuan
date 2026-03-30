@@ -37,6 +37,7 @@ const {
   RANDOM_EVENTS,
   STORY_BEATS,
   RANK_THRESHOLDS,
+  TASK_DEFS,
   COPY,
   UI_TEXT,
 } = window.GAME_DATA;
@@ -81,6 +82,9 @@ const {
   enterMemoryPhaseState,
   placeMemoryPieceInFlow,
   finishNightFlow,
+  createRefiningAttemptState,
+  expireTimedTasksForDay: expireTimedTasksForDayFromRuntime,
+  getSchedulableTaskActivityIds: getSchedulableTaskActivityIdsFromRuntime,
   createKeyboardHandler,
   buildTextStateExport,
 } = window.GAME_RUNTIME;
@@ -328,7 +332,10 @@ function createMemoryBridgeState() {
 }
 
 function createSessionOptions() {
-  const initialFreeActivityId = ACTIVITIES.find((activity) => activity.kind !== "course")?.id || ACTIVITIES[0].id;
+  const initialFreeActivityId =
+    ACTIVITIES.find((activity) => activity.kind !== "course" && activity.kind !== "task")?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course")?.id ||
+    ACTIVITIES[0].id;
   return {
     createRng,
     createTodayState,
@@ -347,7 +354,82 @@ function createSessionOptions() {
 
 const sessionOptions = createSessionOptions();
 const state = createGameState(sessionOptions);
-const PLANNING_ACTIVITIES = ACTIVITIES.filter((activity) => activity.kind !== "course");
+
+function getSchedulableTaskActivityIdsForState(rootState = state) {
+  if (typeof getSchedulableTaskActivityIdsFromRuntime === "function") {
+    return getSchedulableTaskActivityIdsFromRuntime(rootState);
+  }
+  const activeTasks = rootState.tasks?.active || [];
+  return new Set(activeTasks.filter((task) => task.status === "active").map((task) => task.activityId));
+}
+
+function isPlanningActivityAssignable(rootState, activity) {
+  if (!activity || activity.kind === "course") {
+    return false;
+  }
+  if (activity.kind !== "task") {
+    return true;
+  }
+  return getSchedulableTaskActivityIdsForState(rootState).has(activity.id);
+}
+
+function getPlanningActivities(rootState = state) {
+  return ACTIVITIES.filter((activity) => isPlanningActivityAssignable(rootState, activity));
+}
+
+function getDefaultPlanningActivityId(rootState = state) {
+  const planningActivities = getPlanningActivities(rootState);
+  return (
+    planningActivities.find((activity) => activity.kind !== "task")?.id ||
+    planningActivities[0]?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course" && activity.kind !== "task")?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course")?.id ||
+    ACTIVITIES[0]?.id ||
+    null
+  );
+}
+
+function findTaskDefByActivityId(activityId, taskDefs = TASK_DEFS) {
+  return Object.values(taskDefs || {}).find((taskDef) => taskDef.activityId === activityId) || null;
+}
+
+function findActiveTaskForActivity(rootState, activityId) {
+  return (rootState.tasks?.active || []).find((task) => task.activityId === activityId && task.status === "active") || null;
+}
+
+function expireTimedTasksForDayForState(rootState, currentDay, options = {}) {
+  if (typeof expireTimedTasksForDayFromRuntime === "function") {
+    return expireTimedTasksForDayFromRuntime(rootState, currentDay, options);
+  }
+  (rootState.tasks?.active || []).forEach((task) => {
+    if (task.status === "active" && currentDay > task.expiresOnDay) {
+      task.status = "expired";
+    }
+  });
+}
+
+function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) {
+  const taskDef = findTaskDefByActivityId(activity.id, options.taskDefs || TASK_DEFS);
+  const activeTask = findActiveTaskForActivity(rootState, activity.id);
+  if (!taskDef || !activeTask) {
+    return { ok: false, reason: "task_not_available" };
+  }
+
+  rootState.mode = "task";
+  rootState.scene = activity.scene || "task";
+  rootState.taskRuntime = {
+    activeTaskId: activeTask.id,
+    pendingSlotIndex: slotIndex,
+    mode: activity.id,
+    result: null,
+    refining:
+      taskDef.id === "artifact_refining" && typeof createRefiningAttemptState === "function"
+        ? createRefiningAttemptState(taskDef, rootState.rng)
+        : null,
+  };
+
+  return { ok: true, enteredTask: true };
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -662,13 +744,16 @@ function getMainFocusSkill() {
 function runSessionCommand(command) {
   return dispatchSessionCommand(state, command, {
     ...sessionOptions,
+    initialActivityId: getDefaultPlanningActivityId(state),
     courseSelectionBlocks: COURSE_SELECTION_BLOCKS,
     schedulePresets: SCHEDULE_PRESETS,
     defaultArchetypeId: ARCHETYPES[0].id,
+    taskDefs: TASK_DEFS,
     copy: RUNTIME_COPY,
     uiText: UI_TEXT,
     getArchetype,
     getActivity,
+    isActivityAssignable: isPlanningActivityAssignable,
     addLog,
     sessionOptions,
   });
@@ -683,8 +768,10 @@ function createDayFlowContext() {
     storyBeats: STORY_BEATS,
     dayModifiers: DAY_MODIFIERS,
     randomEvents: RANDOM_EVENTS,
-    fallbackActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
+    fallbackActivityId: getDefaultPlanningActivityId(state),
+    taskDefs: TASK_DEFS,
     getActivity,
+    beginTaskActivityForSlot,
     getMainFocusSkill,
     addLog,
     pushTimeline,
@@ -704,10 +791,12 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     uiText: UI_TEXT,
     copy: RUNTIME_COPY,
     slotCount: SLOT_NAMES.length,
-    defaultFreeActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
+    defaultFreeActivityId: getDefaultPlanningActivityId(state),
+    getDefaultPlanningActivityId,
     pieceId,
     getMainFocusSkill,
     addLog,
+    expireTimedTasksForDay: expireTimedTasksForDayForState,
     finishWeek,
     finishRun,
   };
@@ -791,15 +880,16 @@ function assignActivity(activityId) {
 }
 
 function cycleSelectedActivity(delta) {
-  if (state.scheduleLocks[state.selectedSlot] || !PLANNING_ACTIVITIES.length) {
+  const planningActivities = getPlanningActivities();
+  if (state.scheduleLocks[state.selectedSlot] || !planningActivities.length) {
     return;
   }
   const currentIndex = Math.max(
     0,
-    PLANNING_ACTIVITIES.findIndex((activity) => activity.id === state.selectedActivity)
+    planningActivities.findIndex((activity) => activity.id === state.selectedActivity)
   );
-  const nextIndex = (currentIndex + delta + PLANNING_ACTIVITIES.length) % PLANNING_ACTIVITIES.length;
-  state.selectedActivity = PLANNING_ACTIVITIES[nextIndex].id;
+  const nextIndex = (currentIndex + delta + planningActivities.length) % planningActivities.length;
+  state.selectedActivity = planningActivities[nextIndex].id;
   syncUi();
 }
 
@@ -1718,7 +1808,9 @@ function renderPlanningPanel() {
 
   const selectedSlotActivity = getActivity(state.schedule[state.selectedSlot]);
   const selectedSlotLocked = isPlanningSlotLocked(state.selectedSlot);
-  const activeActivity = getActivity(state.selectedActivity) || PLANNING_ACTIVITIES[0] || ACTIVITIES[0];
+  const planningActivities = getPlanningActivities();
+  const activeActivity =
+    planningActivities.find((activity) => activity.id === state.selectedActivity) || planningActivities[0] || ACTIVITIES[0];
   const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
   const todayFixedCourses = state.schedule
     .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: getSlotFullLabel(index) }))
@@ -1760,7 +1852,7 @@ function renderPlanningPanel() {
           : `
             <div class="planning-event-list">
               <div class="activity-grid planning-activity-grid">
-                ${PLANNING_ACTIVITIES.map(
+                ${planningActivities.map(
                   (activity) => `
                     <button class="activity-card ${state.selectedActivity === activity.id ? "active" : ""}" data-activity="${activity.id}" data-tone="${activity.tone}">
                       <strong>${activity.name}</strong>

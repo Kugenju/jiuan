@@ -6,6 +6,7 @@ const {
   buildDailyScheduleFromWeeklyTimetable,
   buildScheduleLocksFromWeeklyTimetable,
   findNextEditableSlot,
+  expireTimedTasksForDay: expireTimedTasksForDayFromRuntime,
 } = window.GAME_RUNTIME;
 const {
   buildMemoryPiecesForState,
@@ -25,6 +26,13 @@ function getMemoryPieceLabel(piece, memoryFragmentTypes, skillLabels) {
     return `${meta.label} · ${skillLabels[piece.skill]}`;
   }
   return meta.label;
+}
+
+function resolveDefaultFreeActivityId(rootState, context) {
+  if (typeof context.getDefaultPlanningActivityId === "function") {
+    return context.getDefaultPlanningActivityId(rootState);
+  }
+  return context.defaultFreeActivityId;
 }
 
 function enterMemoryPhaseState(rootState, context) {
@@ -175,13 +183,20 @@ function finishNightFlow(rootState, context) {
     return { ok: true, finishedRun: true };
   }
 
+  const expireTimedTasksForDay = context.expireTimedTasksForDay || expireTimedTasksForDayFromRuntime;
+  if (typeof expireTimedTasksForDay === "function") {
+    expireTimedTasksForDay(rootState, rootState.day + 1, {
+      copy: context.copy,
+    });
+  }
+
   rootState.day += 1;
   rootState.mode = "planning";
   rootState.scene = "campus";
   rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
   rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
   rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
-  rootState.selectedActivity = context.defaultFreeActivityId;
+  rootState.selectedActivity = resolveDefaultFreeActivityId(rootState, context);
   rootState.dayModifier = null;
   return { ok: true, finishedRun: false };
 }

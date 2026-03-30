@@ -85,6 +85,14 @@ function appendResolvingSegmentForSlot(rootState, slotIndex, context) {
 
 function resolveSlotForFlowState(rootState, slotIndex, context) {
   const activity = getResolvingSlotActivity(rootState, slotIndex, context.getActivity, context.fallbackActivityId);
+  if (activity.kind === "task") {
+    return context.beginTaskActivityForSlot(rootState, activity, slotIndex, {
+      copy: context.copy,
+      taskDefs: context.taskDefs,
+      getActivity: context.getActivity,
+    });
+  }
+
   const activityNotes = applyActivityToState(rootState, activity, slotIndex, {
     copy: context.copy,
     storyBeats: context.storyBeats,

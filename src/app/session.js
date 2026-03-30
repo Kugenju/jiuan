@@ -168,6 +168,13 @@ function syncTaskProgressForSession(rootState, context) {
   });
 }
 
+function getPlanningAssignmentOptions(context) {
+  return {
+    getActivity: context.getActivity,
+    isActivityAssignable: context.isActivityAssignable,
+  };
+}
+
 function dispatchSessionCommand(rootState, command, context) {
   switch (command.type) {
     case "archetype/select": {
@@ -243,9 +250,7 @@ function dispatchSessionCommand(rootState, command, context) {
 
     case "schedule/apply-preset": {
       const preset = findSchedulePreset(context.schedulePresets, command.presetId);
-      return applySchedulePreset(rootState, preset, {
-        getActivity: context.getActivity,
-      });
+      return applySchedulePreset(rootState, preset, getPlanningAssignmentOptions(context));
     }
 
     case "schedule/clear":
@@ -257,9 +262,7 @@ function dispatchSessionCommand(rootState, command, context) {
       });
 
     case "schedule/assign-activity":
-      return assignPlanningActivity(rootState, command.activityId, {
-        getActivity: context.getActivity,
-      });
+      return assignPlanningActivity(rootState, command.activityId, getPlanningAssignmentOptions(context));
 
     case "run/restart":
       resetGameState(rootState, context.sessionOptions);

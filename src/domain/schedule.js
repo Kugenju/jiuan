@@ -129,15 +129,22 @@ function setSelectedPlanningSlot(rootState, index, options) {
   return true;
 }
 
+function isPlanningActivityAllowed(rootState, activity, options) {
+  if (!activity || activity.kind === "course") {
+    return false;
+  }
+  if (typeof options.isActivityAssignable === "function" && !options.isActivityAssignable(rootState, activity)) {
+    return false;
+  }
+  return true;
+}
+
 function assignPlanningActivity(rootState, activityId, options) {
   if (rootState.mode !== "planning" || rootState.scheduleLocks[rootState.selectedSlot]) {
     return false;
   }
   const activity = options.getActivity(activityId);
-  if (!activity || activity.kind === "course") {
-    return false;
-  }
-  if (typeof options.isActivityAssignable === "function" && !options.isActivityAssignable(rootState, activity)) {
+  if (!isPlanningActivityAllowed(rootState, activity, options)) {
     return false;
   }
   rootState.selectedActivity = activityId;
@@ -161,10 +168,7 @@ function applySchedulePreset(rootState, preset, options) {
       return;
     }
     const activity = options.getActivity(activityId);
-    if (!activity || activity.kind === "course") {
-      return;
-    }
-    if (typeof options.isActivityAssignable === "function" && !options.isActivityAssignable(rootState, activity)) {
+    if (!isPlanningActivityAllowed(rootState, activity, options)) {
       return;
     }
     rootState.schedule[index] = activityId;
@@ -207,6 +211,7 @@ Object.assign(window.GAME_RUNTIME, {
   countEditableSlots,
   countFilledEditableSlots,
   setSelectedPlanningSlot,
+  isPlanningActivityAllowed,
   assignPlanningActivity,
   applySchedulePreset,
   clearPlanningSchedule,
