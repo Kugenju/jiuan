@@ -45,6 +45,7 @@ const ACTIVITY_KIND_LABELS = {
   course: "课程",
   assignment: "作业",
   routine: "日常",
+  task: "任务",
 };
 
 const SKILL_LABELS = {
