@@ -29,6 +29,7 @@ const REFINING_CARD_TYPES = {
   lingduan: { id: "lingduan", label: "灵锻", category: "ability" },
 };
 
+// Recipe keys are the three resolved material ids sorted lexicographically and joined by '|'; duplicates show up as repeated ids.
 const REFINING_RECIPE_TABLE = {
   "lingshi|xuantie|xuantie": 3,
   "xuantie|xuantie|xuantie": 1,

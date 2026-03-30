@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const TEST_ROOT = path.resolve(__dirname, "..");
 
 
 function loadScripts(files) {
@@ -18,7 +19,7 @@ function loadScripts(files) {
   context.window.window = context.window;
 
   files.forEach((file) => {
-    const abs = path.join(process.cwd(), file);
+    const abs = path.join(TEST_ROOT, file);
     const code = fs.readFileSync(abs, "utf8");
     vm.runInNewContext(code, context, { filename: abs });
   });
