@@ -64,8 +64,9 @@ function buildWeekSummaryPayload(rootState) {
   const totalWeeks = Number(tracker.totalWeeks || rootState.totalWeeks || 1);
   const canContinue = typeof tracker.canContinue === "boolean" ? tracker.canContinue : week < totalWeeks;
   const routeStressFallback = cloneRouteStress(rootState.routeStress);
+  const taskMarks = Array.isArray(rootState.tasks?.completedMarks) ? structuredClone(rootState.tasks.completedMarks) : [];
 
-  return {
+  const payload = {
     week,
     totalWeeks,
     canContinue,
@@ -73,6 +74,10 @@ function buildWeekSummaryPayload(rootState) {
     routeStressBefore: cloneRouteStress(tracker.routeStressBefore, routeStressFallback),
     routeStressAfter: cloneRouteStress(tracker.routeStressAfter, routeStressFallback),
   };
+  if (taskMarks.length) {
+    payload.taskMarks = taskMarks;
+  }
+  return payload;
 }
 
 function resolveCopyValue(value, ...args) {

@@ -30,6 +30,9 @@ const UI_TEXT = {
     resolving(day, progress, autoplay) {
       return `第 ${day} 天剧情推进中：${progress}%${autoplay ? "（自动）" : "（点击）"}`;
     },
+    task(day, taskName) {
+      return `Day ${day} refining task: ${taskName}`;
+    },
     memory(day) {
       return `第 ${day} 夜正在建构记忆`;
     },
@@ -184,6 +187,37 @@ const UI_TEXT = {
     badge: "选择入学原型",
     startBtn: "开始第一周",
   },
+  task: {
+    title: "Refining Task",
+    objective: "Objective",
+    requirement: "Requirements",
+    selected: "Selected Card",
+    confirm: "Confirm Attempt",
+    reveal: "Reveal",
+    emptySlot: "Empty",
+    noSelection: "No card selected",
+    pending: "Reveal and place three cards to resolve the attempt.",
+    ready: "All slots filled. Confirm to resolve.",
+    used: "Placed",
+    remainingDays(days) {
+      return `${days} day${days === 1 ? "" : "s"} left`;
+    },
+    slot(index) {
+      return `Slot ${index + 1}`;
+    },
+    scoreTarget(score) {
+      return `Target score: ${score}`;
+    },
+    requirements(requirementText) {
+      return requirementText ? `Need at least: ${requirementText}` : "No extra material requirement";
+    },
+    selectedCard(cardName) {
+      return `Selected: ${cardName}`;
+    },
+    hiddenCard(index) {
+      return `Hidden card ${index + 1}`;
+    },
+  },
   summary: {
     panelTitle(week, totalWeeks) {
       return week >= totalWeeks ? "阶段总评" : `第 ${week} 周结算`;
@@ -197,6 +231,7 @@ const UI_TEXT = {
       return `${resourceLabel}结余`;
     },
     bestSkill: "最佳技能",
+    taskMarks: "Task Marks",
   },
   log: {
     title: "最近反馈",

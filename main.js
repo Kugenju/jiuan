@@ -38,6 +38,7 @@ const {
   STORY_BEATS,
   RANK_THRESHOLDS,
   TASK_DEFS,
+  REFINING_CARD_TYPES,
   COPY,
   UI_TEXT,
 } = window.GAME_DATA;
@@ -83,6 +84,9 @@ const {
   placeMemoryPieceInFlow,
   finishNightFlow,
   createRefiningAttemptState,
+  revealRefiningCard,
+  placeRefiningCardInSlot,
+  resolveRefiningAttempt,
   expireTimedTasksForDay: expireTimedTasksForDayFromRuntime,
   getSchedulableTaskActivityIds: getSchedulableTaskActivityIdsFromRuntime,
   createKeyboardHandler,
@@ -458,6 +462,111 @@ function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) 
   return { ok: true, enteredTask: true };
 }
 
+function createEmptyTaskRuntimeState() {
+  return {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+  };
+}
+
+function getActiveTaskRuntime(rootState = state) {
+  const runtime = rootState.taskRuntime;
+  if (!runtime || typeof runtime !== "object") {
+    return createEmptyTaskRuntimeState();
+  }
+  return runtime;
+}
+
+function getActiveTaskInstance(rootState = state) {
+  const runtime = getActiveTaskRuntime(rootState);
+  const activeTasks = rootState.tasks?.active || [];
+  if (runtime.activeTaskId) {
+    const matched = activeTasks.find((task) => task.id === runtime.activeTaskId);
+    if (matched) {
+      return matched;
+    }
+  }
+  if (runtime.mode) {
+    return activeTasks.find((task) => task.activityId === runtime.mode && task.status === "active") || null;
+  }
+  return null;
+}
+
+function getActiveTaskDef(rootState = state) {
+  const task = getActiveTaskInstance(rootState);
+  if (task?.type && TASK_DEFS[task.type]) {
+    return TASK_DEFS[task.type];
+  }
+  return findTaskDefByActivityId(getActiveTaskRuntime(rootState).mode, TASK_DEFS);
+}
+
+function getActiveTaskActivity(rootState = state) {
+  const runtime = getActiveTaskRuntime(rootState);
+  return getActivity(runtime.mode) || getActivity(getActiveTaskDef(rootState)?.activityId) || null;
+}
+
+function getTaskRemainingDays(rootState = state, task = getActiveTaskInstance(rootState)) {
+  if (!task) {
+    return 0;
+  }
+  return Math.max(0, Number(task.expiresOnDay || 0) - Number(rootState.day || 0) + 1);
+}
+
+function getTaskMarkLabel(mark) {
+  if (mark === "artifact_refining") {
+    return "Refining Task";
+  }
+  return mark || "Task";
+}
+
+function getRefiningCardLabel(cardOrType) {
+  const type = typeof cardOrType === "string" ? cardOrType : cardOrType?.type;
+  return REFINING_CARD_TYPES?.[type]?.label || type || "Unknown Material";
+}
+
+function getTaskRequirementText(taskDef = getActiveTaskDef()) {
+  const requirements = Object.entries(taskDef?.objective?.materialRequirements || {});
+  if (!requirements.length) {
+    return "";
+  }
+  return requirements
+    .map(([type, count]) => `${count} x ${getRefiningCardLabel(type)}`)
+    .join(" / ");
+}
+
+function getSelectedTaskCard(rootState = state) {
+  const attempt = getActiveTaskRuntime(rootState).refining;
+  if (!attempt?.selectedCardId) {
+    return null;
+  }
+  return attempt.deck.find((card) => card.id === attempt.selectedCardId) || null;
+}
+
+function getTaskStatusText(rootState = state) {
+  const taskText = UI_TEXT.task || {};
+  const attempt = getActiveTaskRuntime(rootState).refining;
+  if (!attempt) {
+    return taskText.pending || "";
+  }
+  if (attempt.slots.every(Boolean)) {
+    return taskText.ready || "";
+  }
+  const selectedCard = getSelectedTaskCard(rootState);
+  if (selectedCard) {
+    return typeof taskText.selectedCard === "function"
+      ? taskText.selectedCard(getRefiningCardLabel(selectedCard))
+      : getRefiningCardLabel(selectedCard);
+  }
+  return taskText.pending || "";
+}
+
+function resetTaskRuntimeForState(rootState = state) {
+  rootState.taskRuntime = createEmptyTaskRuntimeState();
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -669,6 +778,9 @@ function getPlanningScheduleHintText(filled, total) {
 }
 
 function getFlowHotkeysText() {
+  if (state.mode === "task") {
+    return "Arrow keys switch task controls / Space or Enter activates / F fullscreen";
+  }
   return `快捷键：1-${SLOT_NAMES.length} 选时段，空格填入活动；白天推进按空格/Enter，P 切自动播放；F 全屏。`;
 }
 
@@ -1111,13 +1223,171 @@ function finishRun() {
 }
 
 function continueWeek() {
-  runSessionCommand({ type: "run/continue-week" });
+  const ok = runSessionCommand({ type: "run/continue-week" });
+  if (ok) {
+    state.tasks.active = [];
+    state.tasks.completedMarks = [];
+    state.tasks.lastStory = null;
+    state.tasks.weeklyProgress = state.tasks.weeklyProgress || { craftCompleted: 0, craftTotal: 0 };
+    state.tasks.weeklyProgress.craftCompleted = 0;
+    resetTaskRuntimeForState(state);
+  }
   syncUi();
 }
 
 function restartGame() {
   runSessionCommand({ type: "run/restart" });
   syncUi();
+}
+
+function revealOrSelectTaskCard(cardId) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveTaskRuntime(state).refining;
+  if (!attempt) {
+    return false;
+  }
+  const card = attempt.deck.find((item) => item.id === cardId);
+  if (!card || card.used) {
+    return false;
+  }
+  if (!card.revealed) {
+    const revealed = revealRefiningCard(attempt, cardId);
+    if (revealed) {
+      attempt.selectedCardId = null;
+      syncUi();
+    }
+    return revealed;
+  }
+  attempt.selectedCardId = attempt.selectedCardId === cardId ? null : cardId;
+  syncUi();
+  return true;
+}
+
+function placeSelectedTaskCard(slotIndex) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveTaskRuntime(state).refining;
+  if (!attempt?.selectedCardId) {
+    return false;
+  }
+  const placed = placeRefiningCardInSlot(attempt, attempt.selectedCardId, slotIndex);
+  if (!placed) {
+    return false;
+  }
+  attempt.selectedCardId = null;
+  syncUi();
+  return true;
+}
+
+function finishTaskAttempt(result) {
+  const runtime = getActiveTaskRuntime(state);
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const activity = getActiveTaskActivity(state);
+  if (!task || !taskDef || !activity) {
+    resetTaskRuntimeForState(state);
+    state.mode = "resolving";
+    state.scene = "resolving";
+    syncUi();
+    return false;
+  }
+
+  task.attemptCount = Number(task.attemptCount || 0) + 1;
+  if (result.success) {
+    applyEffectBundle(taskDef.rewards);
+    normalizeState();
+    const summaryMark = taskDef.rewards?.summaryMark;
+    if (summaryMark && !state.tasks.completedMarks.includes(summaryMark)) {
+      state.tasks.completedMarks.push(summaryMark);
+    }
+    task.status = "completed";
+    task.rewardClaimed = true;
+  }
+
+  const detail = RUNTIME_COPY.taskAttemptResult(activity.name, {
+    success: result.success,
+    score: result.score,
+    recipeKey: result.recipeKey,
+    objectiveName: taskDef.objective?.name,
+    remainingDays: getTaskRemainingDays(state, task),
+  });
+  const slotIndex = Number.isInteger(runtime.pendingSlotIndex)
+    ? runtime.pendingSlotIndex
+    : Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+
+  pushTimeline(slotIndex, activity, detail.body);
+  addLog(detail.title, detail.body);
+  state.tasks.lastStory = structuredClone(detail);
+  state.mode = "resolving";
+  state.scene = "resolving";
+  state.progress = (slotIndex + 1) / SLOT_NAMES.length;
+  state.resolvingIndex = Math.max(state.resolvingIndex, slotIndex + 1);
+  state.resolvingFlow.autoplay = false;
+  state.resolvingFlow.autoplayTimer = 0;
+  pushResolvingStoryToState(state, {
+    title: detail.title,
+    body: detail.body,
+    speaker: detail.speaker || UI_TEXT.speakers.schedule,
+  });
+  resetTaskRuntimeForState(state);
+  syncUi();
+  return true;
+}
+
+function confirmTaskAttempt() {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveTaskRuntime(state).refining;
+  const taskDef = getActiveTaskDef(state);
+  if (!attempt || !taskDef) {
+    return false;
+  }
+  const result = resolveRefiningAttempt(attempt, taskDef);
+  if (!result?.complete) {
+    syncUi();
+    return false;
+  }
+  return finishTaskAttempt(result);
+}
+
+function getTaskControlElements() {
+  return Array.from(mainPanel.querySelectorAll("[data-task-control]")).filter((element) => !element.disabled);
+}
+
+function focusTaskControl(delta = 1) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const controls = getTaskControlElements();
+  if (!controls.length) {
+    return false;
+  }
+  const activeIndex = controls.indexOf(document.activeElement);
+  if (activeIndex < 0) {
+    controls[delta < 0 ? controls.length - 1 : 0].focus();
+    return true;
+  }
+  const nextIndex = (activeIndex + delta + controls.length) % controls.length;
+  controls[nextIndex].focus();
+  return true;
+}
+
+function activateTaskControl() {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const controls = getTaskControlElements();
+  if (!controls.length) {
+    return false;
+  }
+  const target = controls.includes(document.activeElement) ? document.activeElement : controls[0];
+  target.focus();
+  target.click();
+  return true;
 }
 
 function render() {
@@ -1158,6 +1428,10 @@ function drawScene() {
   }
   if (state.mode === "summary") {
     drawSummaryScene();
+    return;
+  }
+  if (state.mode === "task") {
+    drawTaskScene();
     return;
   }
   if (state.mode === "resolving") {
@@ -1269,6 +1543,66 @@ function drawResolvingScene() {
   ctx.font = "18px 'Microsoft YaHei'";
   wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
   drawCanvasProgress(470, 330, 340, 16, state.progress);
+  drawTimelineStrip();
+}
+
+function drawTaskScene() {
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "Task" };
+  const attempt = getActiveTaskRuntime(state).refining;
+  const remainingDays = getTaskRemainingDays(state, task);
+  const title =
+    typeof UI_TEXT.canvas?.taskTitle === "function"
+      ? UI_TEXT.canvas.taskTitle(state.day, activity.name)
+      : `Day ${state.day} / ${activity.name}`;
+  const subtitle =
+    typeof UI_TEXT.canvas?.taskSubtitle === "function"
+      ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activity.name)
+      : `${UI_TEXT.task?.remainingDays?.(remainingDays) || remainingDays} / ${taskDef?.objective?.name || ""}`;
+
+  drawAcademyBackdrop("#2b1d16", "#6b4125");
+  drawBanner(title, subtitle);
+
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fillRect(120, 188, 280, 188);
+  ctx.strokeStyle = "rgba(240,195,108,0.45)";
+  ctx.strokeRect(120, 188, 280, 188);
+  ctx.fillStyle = "#f0c36c";
+  ctx.font = "24px 'Microsoft YaHei'";
+  ctx.fillText(taskDef?.objective?.name || activity.name, 146, 230);
+  ctx.fillStyle = "#d7e6fb";
+  ctx.font = "17px 'Microsoft YaHei'";
+  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 146, 270, 224, 28, "#d7e6fb");
+
+  const startX = 500;
+  const startY = 212;
+  const cellSize = 62;
+  (attempt?.deck || []).forEach((card, index) => {
+    const row = Math.floor(index / 3);
+    const col = index % 3;
+    const x = startX + col * (cellSize + 16);
+    const y = startY + row * (cellSize + 14);
+    ctx.fillStyle = card.used ? "rgba(99,211,177,0.24)" : card.revealed ? "rgba(137,187,255,0.22)" : "rgba(255,255,255,0.08)";
+    ctx.fillRect(x, y, cellSize, cellSize);
+    ctx.strokeStyle = attempt?.selectedCardId === card.id ? "#f0c36c" : "rgba(255,255,255,0.18)";
+    ctx.strokeRect(x, y, cellSize, cellSize);
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "14px 'Microsoft YaHei'";
+    ctx.fillText(card.revealed ? getRefiningCardLabel(card) : "?", x + 20, y + 34);
+  });
+
+  const slotY = 448;
+  (attempt?.slots || []).forEach((cardId, index) => {
+    const x = 356 + index * 110;
+    ctx.fillStyle = cardId ? "rgba(99,211,177,0.28)" : "rgba(255,255,255,0.08)";
+    ctx.fillRect(x, slotY, 92, 64);
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.strokeRect(x, slotY, 92, 64);
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "15px 'Microsoft YaHei'";
+    ctx.fillText(cardId ? getRefiningCardLabel(cardId) : `${index + 1}`, x + 18, slotY + 37);
+  });
   drawTimelineStrip();
 }
 
@@ -1517,6 +1851,9 @@ function getCurrentPhaseIndex() {
   if (state.mode === "menu") return -1;
   if (state.mode === "planning") return state.selectedSlot;
   if (state.mode === "resolving") return Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+  if (state.mode === "task") {
+    return Math.min(Math.max(Number(getActiveTaskRuntime(state).pendingSlotIndex || 0), 0), SLOT_NAMES.length - 1);
+  }
   if (state.mode === "memory") return SLOT_NAMES.length - 1;
   return SLOT_NAMES.length - 1;
 }
@@ -1611,6 +1948,10 @@ function syncUi() {
       ? UI_TEXT.statusLine.planning(state.day, getSlotLabel(state.selectedSlot))
       : state.mode === "resolving"
         ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
+        : state.mode === "task"
+          ? typeof UI_TEXT.statusLine.task === "function"
+            ? UI_TEXT.statusLine.task(state.day, getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "Task"))
+            : getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "Task")
         : state.mode === "memory"
           ? UI_TEXT.statusLine.memory(state.day)
           : state.mode === "summary"
@@ -1750,6 +2091,8 @@ function renderFlowPanel() {
                   ? state.resolvingFlow.autoplay
                     ? UI_TEXT.flow.resolvingHintAuto
                     : UI_TEXT.flow.resolvingHintClick
+                  : state.mode === "task"
+                    ? UI_TEXT.flow.taskHint || getTaskStatusText(state)
                   : state.mode === "memory"
                     ? UI_TEXT.flow.memoryHint
                     : UI_TEXT.flow.summaryHint
@@ -2022,6 +2365,10 @@ function renderMainPanel() {
   }
   if (state.mode === "course_selection") {
     renderCourseSelectionPanel();
+    return;
+  }
+  if (state.mode === "task") {
+    renderTaskPanel();
     return;
   }
   if (state.mode === "planning" || state.mode === "resolving") {
@@ -2338,12 +2685,105 @@ function renderMemoryPanel() {
   renderMemoryPanelCompact();
 }
 
+function renderTaskPanel() {
+  const taskText = UI_TEXT.task || {};
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const activity = getActiveTaskActivity(state) || { name: taskText.title || "Task", summary: "" };
+  const attempt = getActiveTaskRuntime(state).refining;
+  const selectedCard = getSelectedTaskCard(state);
+  const requirementText = getTaskRequirementText(taskDef);
+  const remainingDays = getTaskRemainingDays(state, task);
+  const canConfirm = Boolean(attempt?.slots?.every(Boolean));
+  const objectiveName = taskDef?.objective?.name || activity.name;
+  const cardsHtml = (attempt?.deck || [])
+    .map((card, index) => {
+      const label = card.revealed ? getRefiningCardLabel(card) : taskText.reveal || "Reveal";
+      const detail = card.used
+        ? taskText.used || "Used"
+        : card.revealed
+          ? getRefiningCardLabel(card)
+          : typeof taskText.hiddenCard === "function"
+            ? taskText.hiddenCard(index)
+            : `Card ${index + 1}`;
+      return `
+        <button
+          class="activity-card ${attempt.selectedCardId === card.id ? "active" : ""}"
+          data-task-card="${card.id}"
+          data-task-control="card"
+          type="button"
+          ${card.used ? "disabled" : ""}
+        >
+          <strong>${label}</strong>
+          <small>${detail}</small>
+          <small>${card.used ? taskText.used || "Used" : card.revealed ? "Select" : taskText.reveal || "Reveal"}</small>
+        </button>
+      `;
+    })
+    .join("");
+  const slotsHtml = (attempt?.slots || [null, null, null])
+    .map((cardId, index) => `
+      <button class="ghost-button ${cardId ? "primary" : ""}" data-task-slot="${index}" data-task-control="slot" type="button">
+        ${(typeof taskText.slot === "function" ? taskText.slot(index) : `Slot ${index + 1}`)}
+        <span>${cardId ? getRefiningCardLabel(cardId) : taskText.emptySlot || "Empty"}</span>
+      </button>
+    `)
+    .join("");
+
+  mainPanel.innerHTML = `
+    <div class="planning-shell">
+      <div class="panel-title">
+        <h2>${taskText.title || "Task"}</h2>
+        <span class="badge">${typeof taskText.remainingDays === "function" ? taskText.remainingDays(remainingDays) : remainingDays}</span>
+      </div>
+      <div class="story-card focus-callout">
+        <strong>${activity.name}</strong>
+        <small>${activity.summary || ""}</small>
+        <small>${task ? `Attempts ${task.attemptCount || 0}` : ""}</small>
+      </div>
+      <div class="planning-meta-grid">
+        <div class="story-card">
+          <strong>${taskText.objective || "Objective"}</strong>
+          <small>${objectiveName}</small>
+          <small>${typeof taskText.scoreTarget === "function" ? taskText.scoreTarget(taskDef?.objective?.scoreTarget || 0) : ""}</small>
+        </div>
+        <div class="story-card">
+          <strong>${taskText.requirement || "Requirements"}</strong>
+          <small>${typeof taskText.requirements === "function" ? taskText.requirements(requirementText) : requirementText}</small>
+          <small>${getTaskStatusText(state)}</small>
+        </div>
+      </div>
+      <div class="planning-event-list">
+        <div class="activity-grid planning-activity-grid">${cardsHtml}</div>
+      </div>
+      <div class="action-row">${slotsHtml}</div>
+      <div class="story-card" style="margin-top:16px;">
+        <strong>${taskText.selected || "Selected"}</strong>
+        <small>${selectedCard ? getRefiningCardLabel(selectedCard) : taskText.noSelection || "None"}</small>
+        <small>${getTaskStatusText(state)}</small>
+      </div>
+      <div class="action-row planning-actions">
+        <button class="primary" id="task-confirm-btn" data-task-control="confirm" ${canConfirm ? "" : "disabled"}>${taskText.confirm || "Confirm"}</button>
+      </div>
+    </div>
+  `;
+
+  mainPanel.querySelectorAll("[data-task-card]").forEach((button) => {
+    button.addEventListener("click", () => revealOrSelectTaskCard(button.dataset.taskCard));
+  });
+  mainPanel.querySelectorAll("[data-task-slot]").forEach((button) => {
+    button.addEventListener("click", () => placeSelectedTaskCard(Number(button.dataset.taskSlot)));
+  });
+  mainPanel.querySelector("#task-confirm-btn")?.addEventListener("click", confirmTaskAttempt);
+}
+
 function renderSummaryPanel() {
   const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   const bestSkill = state.summary?.bestSkill || ["dao", 0];
   const summaryWeek = getSummaryWeek();
   const summaryTotalWeeks = getSummaryTotalWeeks();
   const canContinue = Boolean(state.summary?.canContinue);
+  const taskMarks = Array.isArray(state.summary?.taskMarks) ? state.summary.taskMarks : [];
   const dominantRouteLabels = {
     study: "课业",
     work: "打工",
@@ -2372,6 +2812,15 @@ function renderSummaryPanel() {
       <button class="primary" id="restart-btn">${UI_TEXT.summary.restartBtn}</button>
     </div>
   `;
+  if (taskMarks.length) {
+    const summaryGrid = mainPanel.querySelector(".summary-grid");
+    if (summaryGrid) {
+      summaryGrid.insertAdjacentHTML(
+        "beforeend",
+        metric(UI_TEXT.summary.taskMarks || "Task Marks", taskMarks.map(getTaskMarkLabel).join(" / "))
+      );
+    }
+  }
   if (canContinue) {
     mainPanel.querySelector("#continue-week-btn").addEventListener("click", continueWeek);
   }
@@ -2577,6 +3026,31 @@ function renderLeftPanel() {
     return;
   }
 
+  if (state.mode === "task") {
+    const task = getActiveTaskInstance(state);
+    const taskDef = getActiveTaskDef(state);
+    const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "Task" };
+    leftPanel.innerHTML = `
+      <div class="panel-title">
+        <h2>${UI_TEXT.left.scheduleTitle}</h2>
+        <span class="badge">${typeof UI_TEXT.task?.remainingDays === "function" ? UI_TEXT.task.remainingDays(getTaskRemainingDays(state, task)) : getTaskRemainingDays(state, task)}</span>
+      </div>
+      <div class="left-info-grid">
+        <div class="left-info-card">
+          <strong>${activity.name}</strong>
+          <small>${taskDef?.objective?.name || ""}</small>
+          <small>${typeof UI_TEXT.task?.requirements === "function" ? UI_TEXT.task.requirements(getTaskRequirementText(taskDef)) : getTaskRequirementText(taskDef)}</small>
+        </div>
+        <div class="left-info-card">
+          <strong>${UI_TEXT.task?.selected || "Selected"}</strong>
+          <small>${getSelectedTaskCard(state) ? getRefiningCardLabel(getSelectedTaskCard(state)) : UI_TEXT.task?.noSelection || "None"}</small>
+          <small>${getTaskStatusText(state)}</small>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (state.mode === "memory") {
     const builtCount = getMemoryBuiltCount();
     leftPanel.innerHTML = `
@@ -2672,6 +3146,8 @@ document.addEventListener(
     startDay,
     advanceResolvingFlow,
     toggleResolvingAutoplay,
+    focusTaskControl,
+    activateTaskControl,
     moveMemoryCursor,
     cycleMemoryPiece,
     placeMemoryPiece,

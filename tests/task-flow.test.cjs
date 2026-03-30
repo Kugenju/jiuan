@@ -263,3 +263,165 @@ test("dispatchSessionCommand keeps the assignability hook active for task activi
   assert.equal(rootState.schedule[0], null);
   assert.equal(rootState.selectedActivity, "homework");
 });
+
+test("finishWeekState carries completed task marks into the weekly summary payload", () => {
+  const windowObject = loadScripts(["src/domain/summary.js"]);
+  const { finishWeekState } = windowObject.GAME_RUNTIME;
+  let receivedPayload = null;
+  const rootState = {
+    mode: "planning",
+    scene: "campus",
+    week: 1,
+    totalWeeks: 4,
+    resources: { coins: 0, insight: 2, spirit: 3 },
+    stats: { aura: 1 },
+    skills: { dao: 1, craft: 4 },
+    storyFlags: { missingClue: false },
+    tasks: {
+      active: [],
+      weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
+      completedMarks: ["artifact_refining"],
+      lastStory: null,
+    },
+    weekTracker: {
+      week: 1,
+      totalWeeks: 4,
+      canContinue: true,
+      dominantRoute: "training",
+      routeStressBefore: { study: 0, work: 0, training: 1 },
+      routeStressAfter: { study: 0, work: 0, training: 2 },
+    },
+    weeklyReports: [],
+    summary: null,
+  };
+  const context = {
+    copy: {
+      summary: {
+        defaultMajorBeat: "default beat",
+        clueMajorBeat: "clue beat",
+        title: "summary",
+        speaker: "academy",
+        logTitle: "week log",
+        body: (_rank, _bestSkillLabel, payload) => {
+          receivedPayload = payload;
+          return "body";
+        },
+      },
+    },
+    skillLabels: { dao: "Dao", craft: "Craft" },
+    rankThresholds: [{ min: 0, label: "C" }],
+    addLog: () => {},
+  };
+
+  finishWeekState(rootState, context);
+
+  assert.deepEqual(realmSafe(receivedPayload), {
+    week: 1,
+    totalWeeks: 4,
+    canContinue: true,
+    dominantRoute: "training",
+    routeStressBefore: { study: 0, work: 0, training: 1 },
+    routeStressAfter: { study: 0, work: 0, training: 2 },
+    taskMarks: ["artifact_refining"],
+  });
+  assert.deepEqual(realmSafe(rootState.summary.taskMarks), ["artifact_refining"]);
+  assert.deepEqual(realmSafe(rootState.weeklyReports[0].taskMarks), ["artifact_refining"]);
+});
+
+test("buildTextStateExport snapshots task system state for debugging", () => {
+  const windowObject = loadScripts(["src/debug/state-export.js"]);
+  const { buildTextStateExport } = windowObject.GAME_RUNTIME;
+  const rootState = {
+    mode: "task",
+    day: 4,
+    week: 1,
+    totalWeeks: 4,
+    selectedArchetype: "starter",
+    currentStory: { title: "task story", body: "", speaker: "system" },
+    routeStress: { study: 0, work: 0, training: 0 },
+    weeklyReports: [],
+    strategyHistory: [],
+    schedule: ["artifact_refining_task"],
+    scheduleLocks: [false],
+    selectedSlot: 0,
+    weeklyTimetable: [["artifact_refining_task"]],
+    courseSelection: { blocks: [] },
+    stats: { aura: 1 },
+    skills: { craft: 2 },
+    resources: { coins: 3, insight: 4, spirit: 5 },
+    relationships: { roommate: 0 },
+    ui: { statsOpen: false, infoModal: null },
+    resolvingFlow: {
+      slotIndex: 0,
+      phase: "result",
+      autoplay: false,
+      segmentIndex: 0,
+      storyTrail: [],
+    },
+    progress: 0.5,
+    memory: {
+      pieces: [],
+      selectedPiece: null,
+      cursor: { kind: "node", id: 0 },
+      board: [
+        {
+          zone: "center",
+          unlocked: true,
+          unlockedDay: 0,
+          structure: null,
+          structureSkill: null,
+          day: null,
+          fragments: [],
+        },
+      ],
+      bridges: [null],
+    },
+    tasks: {
+      active: [{ id: "week-1-artifact_refining", status: "active" }],
+      weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
+      completedMarks: ["artifact_refining"],
+      lastStory: { title: "task done", body: "done", speaker: "system" },
+    },
+    taskRuntime: {
+      activeTaskId: "week-1-artifact_refining",
+      pendingSlotIndex: 0,
+      mode: "artifact_refining_task",
+      result: { success: true, score: 3 },
+      refining: {
+        deck: [{ id: "card-0", type: "xuantie" }],
+        slots: ["card-0", null, null],
+        revealsRemaining: 2,
+        selectedCardId: "card-0",
+      },
+    },
+    summary: null,
+  };
+  const context = {
+    normalizeMemoryCursor: (cursor) => cursor,
+    layout: {
+      nodes: [{ index: 0, q: 0, r: 0, zone: "center" }],
+      edges: [{ index: 0, a: 0, b: 0 }],
+    },
+    isValidPlacement: () => false,
+    uiText: {
+      stateExport: { coordinateSystem: "axial" },
+      common: { unassigned: "unassigned" },
+    },
+    slotNames: ["morning"],
+    getActivity: (activityId) => (activityId ? { id: activityId, name: "Artifact Refining" } : null),
+    getResolvingSegments: () => [],
+  };
+
+  const exported = buildTextStateExport(rootState, context);
+
+  assert.deepEqual(realmSafe(exported.tasks), realmSafe(rootState.tasks));
+  assert.deepEqual(realmSafe(exported.task_runtime), realmSafe(rootState.taskRuntime));
+  assert.notStrictEqual(exported.tasks, rootState.tasks);
+  assert.notStrictEqual(exported.task_runtime, rootState.taskRuntime);
+
+  rootState.tasks.completedMarks.push("mutated");
+  rootState.taskRuntime.refining.slots[0] = null;
+
+  assert.deepEqual(realmSafe(exported.tasks.completedMarks), ["artifact_refining"]);
+  assert.deepEqual(realmSafe(exported.task_runtime.refining.slots), ["card-0", null, null]);
+});

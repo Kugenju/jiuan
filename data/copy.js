@@ -132,6 +132,41 @@ const COPY = {
       return `术式楼与悟理阁经由衔接塔共鸣 ${count} 次，额外凝成 ${count} 点灵力。`;
     },
   },
+  taskUnlocked(taskName, expiresOnDay) {
+    return {
+      title: "Task Unlocked",
+      body: `${taskName} is now available. Finish it before day ${expiresOnDay}.`,
+      speaker: "Workshop Mentor",
+    };
+  },
+  taskExpired(taskName) {
+    return {
+      title: "Task Expired",
+      body: `${taskName} expired before you finished it.`,
+      speaker: "Workshop Mentor",
+    };
+  },
+  taskAttemptResult(taskName, result = {}) {
+    const objectiveName = result.objectiveName || "artifact";
+    if (result.success) {
+      return {
+        title: `${taskName} / Success`,
+        body: `You completed ${objectiveName} with score ${result.score || 0}. The mark is recorded for this week.`,
+        speaker: "Workshop Mentor",
+      };
+    }
+
+    const retryText =
+      Number(result.remainingDays || 0) > 0
+        ? `${result.remainingDays} day${result.remainingDays === 1 ? "" : "s"} remain for another attempt.`
+        : "There is no time left for another attempt.";
+
+    return {
+      title: `${taskName} / Failed`,
+      body: `This attempt did not meet ${objectiveName}. Score: ${result.score || 0}. ${retryText}`,
+      speaker: "Workshop Mentor",
+    };
+  },
   summary: {
     defaultMajorBeat: "这一周你仍在铺垫人脉和学业。",
     clueMajorBeat: "你又向失踪舍友的线索推进了一步。",

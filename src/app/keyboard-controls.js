@@ -55,6 +55,12 @@ function createKeyboardHandler(context) {
       if (key === "p") context.toggleResolvingAutoplay();
     }
 
+    if (context.state.mode === "task") {
+      if (key === "arrowleft" || key === "arrowup") context.focusTaskControl(-1);
+      if (key === "arrowright" || key === "arrowdown") context.focusTaskControl(1);
+      if (key === " " || key === "enter") context.activateTaskControl();
+    }
+
     if (context.state.mode === "memory") {
       if (key === "arrowleft") context.moveMemoryCursor(-1, 0);
       if (key === "arrowright") context.moveMemoryCursor(1, 0);
