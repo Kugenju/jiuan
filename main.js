@@ -61,6 +61,7 @@ const {
   storyBeatMatchesState,
   triggerStoryBeatForActivity,
   applyActivityToState,
+  buildWeekTransitionState,
   computeRankForState,
   finishRunState,
   buildMemoryPiecesForState,
@@ -335,6 +336,7 @@ function createSessionOptions() {
     createMemoryBoardState,
     createMemoryBridgeState,
     totalDays: 7,
+    totalWeeks: 4,
     slotCount: SLOT_NAMES.length,
     initialArchetypeId: ARCHETYPES[0].id,
     initialActivityId: initialFreeActivityId,
@@ -706,6 +708,7 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     pieceId,
     getMainFocusSkill,
     addLog,
+    finishWeek,
     finishRun,
   };
 }
@@ -729,6 +732,14 @@ function createStateExportContext() {
     normalizeMemoryCursor,
     isValidPlacement,
   };
+}
+
+function getSummaryWeek() {
+  return Number(state.summary?.week || state.week || 1);
+}
+
+function getSummaryTotalWeeks() {
+  return Number(state.summary?.totalWeeks || state.totalWeeks || 1);
 }
 
 function chooseArchetype(id) {
@@ -955,8 +966,34 @@ function computeRank() {
   return computeRankForState(state, RANK_THRESHOLDS);
 }
 
-function finishRun() {
+function finishWeek() {
+  const transition = buildWeekTransitionState(state);
+  const routeStressBefore = structuredClone(state.routeStress || { study: 0, work: 0, training: 0 });
+
+  state.weekTracker = {
+    week: transition.week,
+    totalWeeks: transition.totalWeeks,
+    canContinue: transition.canContinue,
+    dominantRoute: transition.dominantRoute,
+    routeStressBefore,
+    routeStressAfter: structuredClone(transition.routeStress),
+    weekActions: transition.weekActions.slice(),
+  };
+  state.strategyHistory.push(structuredClone(transition.weeklyReport));
+  state.routeStress = structuredClone(transition.routeStress);
   finishRunState(state, createSummaryContext());
+  if (!state.summary?.canContinue) {
+    state.finalSummary = structuredClone(state.summary);
+  }
+  syncUi();
+}
+
+function finishRun() {
+  finishWeek();
+}
+
+function continueWeek() {
+  runSessionCommand({ type: "run/continue-week" });
   syncUi();
 }
 
@@ -1152,8 +1189,18 @@ function drawMemoryScene() {
 }
 
 function drawSummaryScene() {
+  const summaryWeek = getSummaryWeek();
+  const summaryTotalWeeks = getSummaryTotalWeeks();
+  const summaryTitle =
+    typeof UI_TEXT.canvas.summaryTitle === "function"
+      ? UI_TEXT.canvas.summaryTitle(summaryWeek, summaryTotalWeeks)
+      : UI_TEXT.canvas.summaryTitle;
+  const summarySubtitle =
+    typeof UI_TEXT.canvas.summarySubtitle === "function"
+      ? UI_TEXT.canvas.summarySubtitle(summaryWeek, summaryTotalWeeks)
+      : UI_TEXT.canvas.summarySubtitle;
   drawAcademyBackdrop("#172036", "#274b6c");
-  drawBanner(UI_TEXT.canvas.summaryTitle, UI_TEXT.canvas.summarySubtitle);
+  drawBanner(summaryTitle, summarySubtitle);
   const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.fillRect(150, 160, 660, 240);
@@ -1449,7 +1496,9 @@ function syncUi() {
         : state.mode === "memory"
           ? UI_TEXT.statusLine.memory(state.day)
           : state.mode === "summary"
-            ? UI_TEXT.statusLine.summary
+            ? typeof UI_TEXT.statusLine.summary === "function"
+              ? UI_TEXT.statusLine.summary(getSummaryWeek(), getSummaryTotalWeeks())
+              : UI_TEXT.statusLine.summary
             : UI_TEXT.statusLine.menu;
 }
 
@@ -2172,9 +2221,19 @@ function renderMemoryPanel() {
 function renderSummaryPanel() {
   const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   const bestSkill = state.summary?.bestSkill || ["dao", 0];
+  const summaryWeek = getSummaryWeek();
+  const summaryTotalWeeks = getSummaryTotalWeeks();
+  const canContinue = Boolean(state.summary?.canContinue);
+  const dominantRouteLabels = {
+    study: "课业",
+    work: "打工",
+    training: "修炼",
+    balanced: "均衡",
+  };
+  const dominantRoute = dominantRouteLabels[state.summary?.dominantRoute || "balanced"] || "均衡";
   mainPanel.innerHTML = `
     <div class="panel-title">
-      <h2>${UI_TEXT.summary.panelTitle}</h2>
+      <h2>${typeof UI_TEXT.summary.panelTitle === "function" ? UI_TEXT.summary.panelTitle(summaryWeek, summaryTotalWeeks) : UI_TEXT.summary.panelTitle}</h2>
       <span class="badge">${rank}</span>
     </div>
     <div class="story-card focus-callout">
@@ -2186,11 +2245,16 @@ function renderSummaryPanel() {
       ${metric(RESOURCE_LABELS.insight, state.resources.insight)}
       ${metric(RESOURCE_LABELS.spirit, state.resources.spirit)}
       ${metric(UI_TEXT.summary.bestSkill, `${SKILL_LABELS[bestSkill[0]]} ${bestSkill[1]}`)}
+      ${metric("主路线", dominantRoute)}
     </div>
     <div class="action-row">
+      ${canContinue ? `<button class="primary" id="continue-week-btn">${UI_TEXT.summary.continueBtn(summaryWeek, summaryTotalWeeks)}</button>` : ""}
       <button class="primary" id="restart-btn">${UI_TEXT.summary.restartBtn}</button>
     </div>
   `;
+  if (canContinue) {
+    mainPanel.querySelector("#continue-week-btn").addEventListener("click", continueWeek);
+  }
   mainPanel.querySelector("#restart-btn").addEventListener("click", restartGame);
 }
 
@@ -2492,6 +2556,7 @@ document.addEventListener(
     cycleMemoryPiece,
     placeMemoryPiece,
     endNight,
+    continueWeek,
     restartGame,
     toggleFullscreen,
   })

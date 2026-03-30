@@ -67,7 +67,11 @@ function createKeyboardHandler(context) {
     }
 
     if (context.state.mode === "summary" && key === "enter") {
-      context.restartGame();
+      if (context.state.summary?.canContinue) {
+        context.continueWeek();
+      } else {
+        context.restartGame();
+      }
     }
 
     if (key === "f") {

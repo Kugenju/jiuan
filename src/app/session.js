@@ -24,14 +24,47 @@ const {
   clearPlanningSchedule,
 } = window.GAME_RUNTIME;
 
+function normalizeTotalWeeks(value) {
+  const parsed = typeof value === "string" ? Number(value.trim()) : Number(value);
+  const normalized = Math.floor(parsed);
+  if (!Number.isFinite(parsed) || normalized <= 0) {
+    return 4;
+  }
+  return normalized;
+}
+
+function buildWeekStartStory(context, week) {
+  if (typeof context.copy?.weekStartStory === "function") {
+    return context.copy.weekStartStory(week);
+  }
+  if (context.copy?.weekStartStory) {
+    return structuredClone(context.copy.weekStartStory);
+  }
+  if (context.copy?.runStartStory) {
+    return structuredClone(context.copy.runStartStory);
+  }
+  return {
+    title: `第 ${week} 周开始`,
+    body: "沿用既有课表，继续安排这一周的自由时段。",
+    speaker: "太学院",
+  };
+}
+
 function createGameState(options) {
   const playerState = createBasePlayerState();
+  const totalWeeks = normalizeTotalWeeks(options.totalWeeks);
+  const createRouteStressState =
+    typeof options.createRouteStressState === "function"
+      ? options.createRouteStressState
+      : () => ({ study: 0, work: 0, training: 0 });
 
   return {
     mode: "menu",
     rng: options.createRng(),
     day: 1,
     totalDays: options.totalDays,
+    week: 1,
+    totalWeeks,
     selectedArchetype: options.initialArchetypeId,
     selectedSlot: 0,
     selectedActivity: options.initialActivityId,
@@ -80,6 +113,12 @@ function createGameState(options) {
       cursor: { kind: "node", id: options.memoryCenterNodeId },
       lastSummary: options.copy.memoryPendingSummary,
     },
+    routeStress: createRouteStressState(),
+    weeklyReports: [],
+    strategyHistory: [],
+    weekActions: [],
+    weekTracker: null,
+    finalSummary: null,
     summary: null,
   };
 }
@@ -187,6 +226,46 @@ function dispatchSessionCommand(rootState, command, context) {
     case "run/restart":
       resetGameState(rootState, context.sessionOptions);
       return true;
+
+    case "run/continue-week": {
+      if (rootState.mode !== "summary" || !rootState.summary?.canContinue) {
+        return false;
+      }
+
+      rootState.week += 1;
+      rootState.day = 1;
+      rootState.mode = "planning";
+      rootState.scene = "campus";
+      rootState.progress = 0;
+      rootState.resolvingIndex = 0;
+      rootState.phaseTimer = 0;
+      rootState.resolvingFlow = {
+        phase: "idle",
+        slotIndex: 0,
+        segmentIndex: 0,
+        autoplay: false,
+        autoplayDelay: 1.05,
+        autoplayTimer: 0,
+        storyTrail: [],
+        justAppended: false,
+      };
+      rootState.dayModifier = null;
+      rootState.summary = null;
+      rootState.weekTracker = null;
+      rootState.weekActions = [];
+      rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
+      rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
+      rootState.selectedActivity = context.initialActivityId;
+      rootState.currentStory = buildWeekStartStory(context, rootState.week);
+      rootState.memory.pieces = [];
+      rootState.memory.selectedPiece = null;
+      rootState.memory.dragPieceId = null;
+      rootState.memory.placementsToday = [];
+      rootState.memory.cursor = { kind: "node", id: context.memoryCenterNodeId };
+      rootState.memory.lastSummary = context.copy.memoryPendingSummary;
+      return true;
+    }
 
     default:
       return false;

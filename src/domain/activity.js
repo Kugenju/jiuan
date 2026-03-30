@@ -5,6 +5,8 @@ const {
   applyEffectBundleToRoot,
   normalizePlayerState,
   triggerStoryBeatForActivity,
+  getRouteStressPenaltyProfile,
+  ROUTE_ACTIVITY_MAP,
 } = window.GAME_RUNTIME;
 
 function findDayModifier(dayModifiers, rootState) {
@@ -116,19 +118,92 @@ function getActivitySpeaker(activity, uiText) {
   return uiText.speakers.routine;
 }
 
-function applyAssignmentProtocol(rootState, activity, context, notes) {
+function cloneEffectBundle(bundle = {}) {
+  return {
+    stats: { ...(bundle.stats || {}) },
+    skills: { ...(bundle.skills || {}) },
+    resources: { ...(bundle.resources || {}) },
+    relationships: { ...(bundle.relationships || {}) },
+  };
+}
+
+function getRoutePenaltyForActivity(rootState, activity) {
+  const route = ROUTE_ACTIVITY_MAP?.[activity.id] || null;
+  if (!route) {
+    return getRouteStressPenaltyProfile?.("balanced", 0) || {
+      resourcePenalty: 0,
+      fatigueDelta: 0,
+      auraPenalty: 0,
+      moodPenalty: 0,
+      selfControlPenalty: 0,
+      assignmentBonusPenalty: 0,
+    };
+  }
+  return getRouteStressPenaltyProfile?.(route, rootState.routeStress?.[route] || 0) || {
+    resourcePenalty: 0,
+    fatigueDelta: 0,
+    auraPenalty: 0,
+    moodPenalty: 0,
+    selfControlPenalty: 0,
+    assignmentBonusPenalty: 0,
+  };
+}
+
+function applyRoutePenaltyToEffects(activity, effects, routePenalty) {
+  const adjusted = cloneEffectBundle(effects);
+
+  if (activity.id === "homework") {
+    adjusted.resources.insight = Math.max(0, Number(adjusted.resources.insight || 0) - Number(routePenalty.resourcePenalty || 0));
+  }
+
+  if (activity.id === "part_time") {
+    adjusted.resources.coins = Math.max(0, Number(adjusted.resources.coins || 0) - Number(routePenalty.resourcePenalty || 0));
+    adjusted.stats.fatigue = Number(adjusted.stats.fatigue || 0) + Number(routePenalty.fatigueDelta || 0);
+  }
+
+  if (activity.id === "training") {
+    adjusted.stats.aura = Math.max(0, Number(adjusted.stats.aura || 0) - Number(routePenalty.auraPenalty || 0));
+    adjusted.stats.mood = Math.max(0, Number(adjusted.stats.mood || 0) - Number(routePenalty.moodPenalty || 0));
+    adjusted.stats.selfControl = Number(adjusted.stats.selfControl || 0) - Number(routePenalty.selfControlPenalty || 0);
+  }
+
+  return adjusted;
+}
+
+function recordWeekAction(rootState, activity, slotIndex) {
+  if (rootState.scheduleLocks?.[slotIndex]) {
+    return;
+  }
+  if (!ROUTE_ACTIVITY_MAP?.[activity.id]) {
+    return;
+  }
+  if (!Array.isArray(rootState.weekActions)) {
+    rootState.weekActions = [];
+  }
+  rootState.weekActions.push(activity.id);
+}
+
+function applyAssignmentProtocol(rootState, activity, context, notes, routePenalty) {
   if (activity.kind !== "assignment" || !activity.assignment) {
     return;
   }
 
   const skill = resolveAssignmentSkill(rootState, activity, context);
+  const baseAmount = Number(activity.assignment.amount || 0);
+  const penaltyAmount =
+    Number(routePenalty?.assignmentBonusPenalty || 0) >= 999
+      ? baseAmount
+      : Number(routePenalty?.assignmentBonusPenalty || 0);
+  const actualAmount = Math.max(0, baseAmount - penaltyAmount);
   if (skill) {
-    rootState.skills[skill] += activity.assignment.amount;
-    notes.push(
-      activity.assignment.noteTemplate
-        .replace("{skill}", context.skillLabels[skill])
-        .replace("{amount}", String(activity.assignment.amount))
-    );
+    rootState.skills[skill] += actualAmount;
+    if (actualAmount > 0) {
+      notes.push(
+        activity.assignment.noteTemplate
+          .replace("{skill}", context.skillLabels[skill])
+          .replace("{amount}", String(actualAmount))
+      );
+    }
     return;
   }
 
@@ -141,15 +216,17 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
   const preferredSlots = Array.isArray(activity.preferred) ? activity.preferred : [];
   const isPreferred = preferredSlots.includes(slotIndex);
   const modifierNote = consumeDayModifierForActivity(rootState, activity, context.copy);
+  const routePenalty = getRoutePenaltyForActivity(rootState, activity);
 
   trackActivityOnTodayState(rootState, activity, slotIndex);
+  recordWeekAction(rootState, activity, slotIndex);
 
   const notes = [];
   if (modifierNote) {
     notes.push(modifierNote);
   }
 
-  applyEffectBundleToRoot(rootState, activity.effects);
+  applyEffectBundleToRoot(rootState, applyRoutePenaltyToEffects(activity, activity.effects, routePenalty));
   if (activity.notes?.base) {
     notes.push(activity.notes.base);
   }
@@ -161,7 +238,7 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
     }
   }
 
-  applyAssignmentProtocol(rootState, activity, context, notes);
+  applyAssignmentProtocol(rootState, activity, context, notes, routePenalty);
 
   triggerStoryBeatForActivity(rootState, activity, notes, context.storyBeats);
   normalizePlayerState(rootState);
