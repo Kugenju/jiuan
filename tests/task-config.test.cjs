@@ -58,3 +58,11 @@ test("debug refining page loads sandbox scripts and mount node", () => {
   assert.match(debugHtml, /<script src="\.\/src\/debug\/refining-sandbox\.js"><\/script>/);
   assert.match(debugHtml, /id="refining-debug-app"/);
 });
+
+test("index exposes weekly timetable modal entry points", () => {
+  const indexHtml = fs.readFileSync(path.join(TEST_ROOT, "index.html"), "utf8");
+
+  assert.match(indexHtml, /id="timetable-toggle-btn"/);
+  assert.match(indexHtml, /<script src="\.\/src\/app\/info-modal-view\.js"><\/script>/);
+  assert.ok(indexHtml.indexOf('./src/app/info-modal-view.js') < indexHtml.indexOf('./main.js'));
+});

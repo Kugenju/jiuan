@@ -16,6 +16,7 @@ const UI_TEXT = {
     statsClose: "收起状态",
     progress: "日程进度",
     feedback: "最近反馈",
+    timetable: "完整课表",
   },
   speakers: {
     survey: "问卷法阵",
@@ -87,6 +88,7 @@ const UI_TEXT = {
       "灵台锚片只能用于解锁灰域节点。彩色纹片只能落在与自身颜色对应的分区，灵台核心可容纳任意彩色纹片。衔接纹片属于边位建筑，仅可架设在两端节点都已有建筑的相邻边上。",
     progressTitle: "日程进度",
     feedbackTitle: "最近反馈",
+    timetableTitle: "本周完整课表",
   },
   flow: {
     title: "当前进展",
