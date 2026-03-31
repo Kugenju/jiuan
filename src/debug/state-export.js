@@ -125,6 +125,8 @@ function buildTextStateExport(rootState, context) {
         day: bridge?.day ?? null,
       })),
     },
+    tasks: snapshot(rootState.tasks || null),
+    task_runtime: snapshot(rootState.taskRuntime || null),
     summary: snapshot(rootState.summary),
   };
 }

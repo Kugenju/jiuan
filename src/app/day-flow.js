@@ -85,6 +85,15 @@ function appendResolvingSegmentForSlot(rootState, slotIndex, context) {
 
 function resolveSlotForFlowState(rootState, slotIndex, context) {
   const activity = getResolvingSlotActivity(rootState, slotIndex, context.getActivity, context.fallbackActivityId);
+  if (activity.kind === "task") {
+    return context.beginTaskActivityForSlot(rootState, activity, slotIndex, {
+      copy: context.copy,
+      taskDefs: context.taskDefs,
+      getActivity: context.getActivity,
+    });
+  }
+
+  const previousTaskStory = rootState.tasks?.lastStory || null;
   const activityNotes = applyActivityToState(rootState, activity, slotIndex, {
     copy: context.copy,
     storyBeats: context.storyBeats,
@@ -92,7 +101,13 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
     skillLabels: context.skillLabels,
     getMainFocusSkill: context.getMainFocusSkill,
     addLog: context.addLog,
+    taskDefs: context.taskDefs,
+    handleResolvedCourseTaskProgress: context.handleResolvedCourseTaskProgress,
   });
+  const unlockedTaskStory =
+    rootState.tasks?.lastStory && rootState.tasks.lastStory !== previousTaskStory
+      ? structuredClone(rootState.tasks.lastStory)
+      : null;
 
   const randomEvent = triggerRandomEventForTiming(rootState, slotIndex, activity, "after", {
     randomEvents: context.randomEvents,
@@ -115,8 +130,57 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
     body: detail.body,
     speaker: getActivitySpeaker(activity, context.uiText),
   });
+  if (unlockedTaskStory) {
+    pushResolvingStoryToState(rootState, unlockedTaskStory);
+  }
   rootState.resolvingIndex = slotIndex + 1;
   rootState.progress = rootState.resolvingIndex / context.slotNames.length;
+}
+
+function createEmptyTaskRuntimeState() {
+  return {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+  };
+}
+
+function resumeResolvingAfterTaskAttempt(rootState, entry, context = {}) {
+  const slotCount = Math.max(1, Array.isArray(context.slotNames) ? context.slotNames.length : 0);
+  const pendingSlotIndex = Number(rootState.taskRuntime?.pendingSlotIndex);
+  const fallbackSlotIndex = Number(rootState.resolvingFlow?.slotIndex || 0);
+  const slotIndex = Number.isInteger(pendingSlotIndex)
+    ? Math.max(0, Math.min(pendingSlotIndex, slotCount - 1))
+    : Math.max(0, Math.min(fallbackSlotIndex, slotCount - 1));
+
+  if (!rootState.resolvingFlow || typeof rootState.resolvingFlow !== "object") {
+    rootState.resolvingFlow = createResolvingFlowState();
+  }
+
+  rootState.mode = "resolving";
+  rootState.scene = "resolving";
+  rootState.progress = (slotIndex + 1) / slotCount;
+  rootState.resolvingIndex = Math.max(Number(rootState.resolvingIndex || 0), slotIndex + 1);
+  rootState.resolvingFlow.phase = "result";
+  rootState.resolvingFlow.slotIndex = slotIndex;
+  rootState.resolvingFlow.autoplay = false;
+  rootState.resolvingFlow.autoplayTimer = 0;
+
+  pushResolvingStoryToState(rootState, {
+    title: entry.title,
+    body: entry.body,
+    speaker: entry.speaker || context.uiText?.speakers?.schedule,
+  });
+
+  if (typeof context.resetTaskRuntime === "function") {
+    context.resetTaskRuntime(rootState);
+  } else {
+    rootState.taskRuntime = createEmptyTaskRuntimeState();
+  }
+
+  return slotIndex;
 }
 
 function startDayFlow(rootState, context) {
@@ -235,6 +299,7 @@ Object.assign(window.GAME_RUNTIME, {
   showResolvingLeadForSlot,
   appendResolvingSegmentForSlot,
   resolveSlotForFlowState,
+  resumeResolvingAfterTaskAttempt,
   startDayFlow,
   advanceResolvingFlowState,
   toggleResolvingAutoplayOnState,

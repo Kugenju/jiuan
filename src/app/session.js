@@ -6,6 +6,7 @@ const {
   resetPlayerStateOnRoot,
   applyArchetypeEffectToRoot,
 } = window.GAME_RUNTIME;
+const { syncWeeklyTaskProgress: syncWeeklyTaskProgressFromRuntime } = window.GAME_RUNTIME;
 const {
   createEmptySchedule,
   createEmptyWeeklyTimetable,
@@ -57,6 +58,29 @@ function createGameState(options) {
     typeof options.createRouteStressState === "function"
       ? options.createRouteStressState
       : () => ({ study: 0, work: 0, training: 0 });
+  const createTaskState =
+    typeof options.createTaskState === "function"
+      ? options.createTaskState
+      : typeof window.GAME_RUNTIME.createTaskState === "function"
+      ? window.GAME_RUNTIME.createTaskState
+      : () => ({
+          active: [],
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          completedMarks: [],
+          lastStory: null,
+        });
+  const createTaskRuntimeState =
+    typeof options.createTaskRuntimeState === "function"
+      ? options.createTaskRuntimeState
+      : typeof window.GAME_RUNTIME.createTaskRuntimeState === "function"
+      ? window.GAME_RUNTIME.createTaskRuntimeState
+      : () => ({
+          activeTaskId: null,
+          pendingSlotIndex: null,
+          mode: null,
+          result: null,
+          refining: null,
+        });
 
   return {
     mode: "menu",
@@ -120,6 +144,8 @@ function createGameState(options) {
     weekTracker: null,
     finalSummary: null,
     summary: null,
+    tasks: createTaskState(),
+    taskRuntime: createTaskRuntimeState(),
   };
 }
 
@@ -129,6 +155,53 @@ function resetGameState(targetState, options) {
     targetState[key] = fresh[key];
   });
   return targetState;
+}
+
+function syncTaskProgressForSession(rootState, context) {
+  const syncWeeklyTaskProgress = context.syncWeeklyTaskProgress || syncWeeklyTaskProgressFromRuntime;
+  if (typeof syncWeeklyTaskProgress !== "function") {
+    return;
+  }
+  syncWeeklyTaskProgress(rootState, {
+    taskDefs: context.taskDefs,
+    getActivity: context.getActivity,
+  });
+}
+
+function resetTaskStateForWeek(rootState, context) {
+  const createTaskState =
+    typeof context.createTaskState === "function"
+      ? context.createTaskState
+      : typeof window.GAME_RUNTIME.createTaskState === "function"
+      ? window.GAME_RUNTIME.createTaskState
+      : () => ({
+          active: [],
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          completedMarks: [],
+          lastStory: null,
+        });
+  const createTaskRuntimeState =
+    typeof context.createTaskRuntimeState === "function"
+      ? context.createTaskRuntimeState
+      : typeof window.GAME_RUNTIME.createTaskRuntimeState === "function"
+      ? window.GAME_RUNTIME.createTaskRuntimeState
+      : () => ({
+          activeTaskId: null,
+          pendingSlotIndex: null,
+          mode: null,
+          result: null,
+          refining: null,
+        });
+
+  rootState.tasks = createTaskState();
+  rootState.taskRuntime = createTaskRuntimeState();
+}
+
+function getPlanningAssignmentOptions(context) {
+  return {
+    getActivity: context.getActivity,
+    isActivityAssignable: context.isActivityAssignable,
+  };
 }
 
 function dispatchSessionCommand(rootState, command, context) {
@@ -199,15 +272,14 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
+      syncTaskProgressForSession(rootState, context);
       rootState.currentStory = structuredClone(context.copy.runStartStory);
       return true;
     }
 
     case "schedule/apply-preset": {
       const preset = findSchedulePreset(context.schedulePresets, command.presetId);
-      return applySchedulePreset(rootState, preset, {
-        getActivity: context.getActivity,
-      });
+      return applySchedulePreset(rootState, preset, getPlanningAssignmentOptions(context));
     }
 
     case "schedule/clear":
@@ -219,9 +291,7 @@ function dispatchSessionCommand(rootState, command, context) {
       });
 
     case "schedule/assign-activity":
-      return assignPlanningActivity(rootState, command.activityId, {
-        getActivity: context.getActivity,
-      });
+      return assignPlanningActivity(rootState, command.activityId, getPlanningAssignmentOptions(context));
 
     case "run/restart":
       resetGameState(rootState, context.sessionOptions);
@@ -253,10 +323,12 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.summary = null;
       rootState.weekTracker = null;
       rootState.weekActions = [];
+      resetTaskStateForWeek(rootState, context);
       rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);
       rootState.selectedActivity = context.initialActivityId;
+      syncTaskProgressForSession(rootState, context);
       rootState.currentStory = buildWeekStartStory(context, rootState.week);
       rootState.memory.pieces = [];
       rootState.memory.selectedPiece = null;

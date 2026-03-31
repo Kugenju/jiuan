@@ -278,6 +278,18 @@ function applyAssignmentProtocol(rootState, activity, context, notes, fatiguePen
   }
 }
 
+function syncTimedTaskProgressForResolvedCourse(rootState, activity, context) {
+  const handleResolvedCourseTaskProgress =
+    context.handleResolvedCourseTaskProgress || window.GAME_RUNTIME.handleResolvedCourseTaskProgress;
+  if (typeof handleResolvedCourseTaskProgress !== "function") {
+    return null;
+  }
+  return handleResolvedCourseTaskProgress(rootState, activity, {
+    taskDefs: context.taskDefs,
+    copy: context.copy,
+  });
+}
+
 function applyActivityToState(rootState, activity, slotIndex, context) {
   const preferredSlots = Array.isArray(activity.preferred) ? activity.preferred : [];
   const isPreferred = preferredSlots.includes(slotIndex);
@@ -310,6 +322,7 @@ function applyActivityToState(rootState, activity, slotIndex, context) {
   }
 
   applyAssignmentProtocol(rootState, activity, context, notes, fatiguePenaltyStep, routePenalty);
+  syncTimedTaskProgressForResolvedCourse(rootState, activity, context);
 
   triggerStoryBeatForActivity(rootState, activity, notes, context.storyBeats);
   normalizePlayerState(rootState);

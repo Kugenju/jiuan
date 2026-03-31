@@ -7,6 +7,11 @@ const TASK_DEFS = {
     skill: "craft",
     durationDays: 3,
     weeklyLimit: 1,
+    rounds: {
+      maxRounds: 3,
+      refreshMode: "replace_used_only",
+      refreshPool: "base_refining_pool",
+    },
     rewards: {
       skills: { craft: 1 },
       resources: { spirit: 1, insight: 1 },
@@ -29,6 +34,7 @@ const REFINING_CARD_TYPES = {
   lingduan: { id: "lingduan", label: "灵锻", category: "ability" },
 };
 
+// Recipe keys are the three resolved material ids sorted lexicographically and joined by '|'; duplicates show up as repeated ids.
 const REFINING_RECIPE_TABLE = {
   "lingshi|xuantie|xuantie": 3,
   "xuantie|xuantie|xuantie": 1,

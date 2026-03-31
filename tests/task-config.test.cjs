@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const TEST_ROOT = path.resolve(__dirname, "..");
 
 
 function loadScripts(files) {
@@ -18,7 +19,7 @@ function loadScripts(files) {
   context.window.window = context.window;
 
   files.forEach((file) => {
-    const abs = path.join(process.cwd(), file);
+    const abs = path.join(TEST_ROOT, file);
     const code = fs.readFileSync(abs, "utf8");
     vm.runInNewContext(code, context, { filename: abs });
   });
@@ -38,4 +39,22 @@ test("artifact refining task config is exported with task activity metadata", ()
   assert.deepEqual(Object.keys(REFINING_CARD_TYPES).sort(), ["guanxing", "lingduan", "lingshi", "mujing", "xuantie"]);
   assert.equal(REFINING_RECIPE_TABLE["lingshi|xuantie|xuantie"], 3);
   assert.equal(REFINING_RECIPE_TABLE["xuantie|xuantie|xuantie"], 1);
+});
+
+test("index loads timed task runtime modules before main app bootstrap", () => {
+  const indexHtml = fs.readFileSync(path.join(TEST_ROOT, "index.html"), "utf8");
+
+  assert.match(indexHtml, /<script src="\.\/src\/domain\/task-system\.js"><\/script>/);
+  assert.match(indexHtml, /<script src="\.\/src\/domain\/refining-minigame\.js"><\/script>/);
+  assert.match(indexHtml, /<script src="\.\/src\/app\/refining-view\.js"><\/script>/);
+  assert.ok(indexHtml.indexOf('./src/domain/task-system.js') < indexHtml.indexOf('./main.js'));
+  assert.ok(indexHtml.indexOf('./src/domain/refining-minigame.js') < indexHtml.indexOf('./main.js'));
+  assert.ok(indexHtml.indexOf('./src/app/refining-view.js') < indexHtml.indexOf('./main.js'));
+});
+
+test("debug refining page loads sandbox scripts and mount node", () => {
+  const debugHtml = fs.readFileSync(path.join(TEST_ROOT, "debug-refining.html"), "utf8");
+
+  assert.match(debugHtml, /<script src="\.\/src\/debug\/refining-sandbox\.js"><\/script>/);
+  assert.match(debugHtml, /id="refining-debug-app"/);
 });

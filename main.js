@@ -37,6 +37,8 @@ const {
   RANDOM_EVENTS,
   STORY_BEATS,
   RANK_THRESHOLDS,
+  TASK_DEFS,
+  REFINING_CARD_TYPES,
   COPY,
   UI_TEXT,
 } = window.GAME_DATA;
@@ -54,6 +56,7 @@ const {
   showResolvingLeadForSlot,
   appendResolvingSegmentForSlot,
   resolveSlotForFlowState,
+  resumeResolvingAfterTaskAttempt,
   startDayFlow,
   advanceResolvingFlowState,
   toggleResolvingAutoplayOnState,
@@ -81,6 +84,19 @@ const {
   enterMemoryPhaseState,
   placeMemoryPieceInFlow,
   finishNightFlow,
+  createRefiningAttemptState,
+  createRefiningSessionState,
+  revealRefiningCard,
+  placeRefiningCardInSlot,
+  resolveRefiningAttempt,
+  applyRefiningTaskRound,
+  buildRefiningStageView,
+  hitTestRefiningStage,
+  buildRefiningTaskPanelState,
+  renderRefiningTaskPanelHtml,
+  handleResolvedCourseTaskProgress: handleResolvedCourseTaskProgressFromRuntime,
+  expireTimedTasksForDay: expireTimedTasksForDayFromRuntime,
+  getSchedulableTaskActivityIds: getSchedulableTaskActivityIdsFromRuntime,
   createKeyboardHandler,
   buildTextStateExport,
 } = window.GAME_RUNTIME;
@@ -97,6 +113,17 @@ const RUNTIME_COPY = {
     title: "日程未满",
     body: "今天的自由时段还没有安排完。固定课程会按课表自动带入，但空出来的时段仍需要你自己补齐。",
   },
+};
+
+const REFINING_STAGE_LAYOUT = {
+  boardOrigin: { x: 82, y: 176 },
+  cardSize: { width: 118, height: 86 },
+  cardGap: { x: 18, y: 18 },
+  triangleSlots: [
+    { x: 648, y: 194, width: 132, height: 82 },
+    { x: 566, y: 338, width: 132, height: 82 },
+    { x: 730, y: 338, width: 132, height: 82 },
+  ],
 };
 
 function createRng(seed = 20260313) {
@@ -328,7 +355,10 @@ function createMemoryBridgeState() {
 }
 
 function createSessionOptions() {
-  const initialFreeActivityId = ACTIVITIES.find((activity) => activity.kind !== "course")?.id || ACTIVITIES[0].id;
+  const initialFreeActivityId =
+    ACTIVITIES.find((activity) => activity.kind !== "course" && activity.kind !== "task")?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course")?.id ||
+    ACTIVITIES[0].id;
   return {
     createRng,
     createTodayState,
@@ -347,7 +377,235 @@ function createSessionOptions() {
 
 const sessionOptions = createSessionOptions();
 const state = createGameState(sessionOptions);
-const PLANNING_ACTIVITIES = ACTIVITIES.filter((activity) => activity.kind !== "course");
+
+function getSchedulableTaskActivityIdsForState(rootState = state) {
+  if (typeof getSchedulableTaskActivityIdsFromRuntime === "function") {
+    return getSchedulableTaskActivityIdsFromRuntime(rootState);
+  }
+  const activeTasks = rootState.tasks?.active || [];
+  return new Set(activeTasks.filter((task) => task.status === "active").map((task) => task.activityId));
+}
+
+function isPlanningActivityAssignable(rootState, activity) {
+  if (!activity || activity.kind === "course") {
+    return false;
+  }
+  if (activity.kind !== "task") {
+    return true;
+  }
+  return getSchedulableTaskActivityIdsForState(rootState).has(activity.id);
+}
+
+function getPlanningActivities(rootState = state) {
+  return ACTIVITIES.filter((activity) => isPlanningActivityAssignable(rootState, activity));
+}
+
+function getDefaultPlanningActivityId(rootState = state) {
+  const planningActivities = getPlanningActivities(rootState);
+  return (
+    planningActivities.find((activity) => activity.kind !== "task")?.id ||
+    planningActivities[0]?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course" && activity.kind !== "task")?.id ||
+    ACTIVITIES.find((activity) => activity.kind !== "course")?.id ||
+    ACTIVITIES[0]?.id ||
+    null
+  );
+}
+
+function findTaskDefByActivityId(activityId, taskDefs = TASK_DEFS) {
+  return Object.values(taskDefs || {}).find((taskDef) => taskDef.activityId === activityId) || null;
+}
+
+function findActiveTaskForActivity(rootState, activityId) {
+  return (rootState.tasks?.active || []).find((task) => task.activityId === activityId && task.status === "active") || null;
+}
+
+function expireTimedTasksForDayForState(rootState, currentDay, options = {}) {
+  if (typeof expireTimedTasksForDayFromRuntime === "function") {
+    return expireTimedTasksForDayFromRuntime(rootState, currentDay, options);
+  }
+  (rootState.tasks?.active || []).forEach((task) => {
+    if (task.status === "active" && currentDay > task.expiresOnDay) {
+      task.status = "expired";
+    }
+  });
+}
+
+function syncWeeklyTaskProgressForState(rootState, options = {}) {
+  const getActivityForState = typeof options.getActivity === "function" ? options.getActivity : getActivity;
+  rootState.tasks = rootState.tasks || {
+    active: [],
+    weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+    completedMarks: [],
+    lastStory: null,
+  };
+  rootState.tasks.weeklyProgress = rootState.tasks.weeklyProgress || { craftCompleted: 0, craftTotal: 0 };
+  const craftCompleted = Number(rootState.tasks.weeklyProgress.craftCompleted);
+  rootState.tasks.weeklyProgress.craftCompleted = Number.isFinite(craftCompleted) ? craftCompleted : 0;
+  rootState.tasks.weeklyProgress.craftTotal = 0;
+  if (typeof getActivityForState !== "function") {
+    return;
+  }
+
+  const craftTotal = (rootState.weeklyTimetable || []).flat().reduce((count, activityId) => {
+    const activity = activityId ? getActivityForState(activityId) : null;
+    return count + (activity?.kind === "course" && activity.skill === "craft" ? 1 : 0);
+  }, 0);
+
+  rootState.tasks.weeklyProgress.craftTotal = craftTotal;
+  if (rootState.tasks.weeklyProgress.craftCompleted > craftTotal) {
+    rootState.tasks.weeklyProgress.craftCompleted = craftTotal;
+  }
+}
+
+function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) {
+  const taskDef = findTaskDefByActivityId(activity.id, options.taskDefs || TASK_DEFS);
+  const activeTask = findActiveTaskForActivity(rootState, activity.id);
+  if (!taskDef || !activeTask) {
+    return { ok: false, reason: "task_not_available" };
+  }
+
+  rootState.mode = "task";
+  rootState.scene = activity.scene || "task";
+  rootState.taskRuntime = {
+    activeTaskId: activeTask.id,
+    pendingSlotIndex: slotIndex,
+    mode: activity.id,
+    result: null,
+    refining:
+      taskDef.id === "artifact_refining" && typeof createRefiningSessionState === "function"
+        ? createRefiningSessionState(taskDef, rootState.rng)
+        : null,
+  };
+
+  return { ok: true, enteredTask: true };
+}
+
+function createEmptyTaskRuntimeState() {
+  return {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+  };
+}
+
+function getActiveTaskRuntime(rootState = state) {
+  const runtime = rootState.taskRuntime;
+  if (!runtime || typeof runtime !== "object") {
+    return createEmptyTaskRuntimeState();
+  }
+  return runtime;
+}
+
+function getActiveTaskInstance(rootState = state) {
+  const runtime = getActiveTaskRuntime(rootState);
+  const activeTasks = rootState.tasks?.active || [];
+  if (runtime.activeTaskId) {
+    const matched = activeTasks.find((task) => task.id === runtime.activeTaskId);
+    if (matched) {
+      return matched;
+    }
+  }
+  if (runtime.mode) {
+    return activeTasks.find((task) => task.activityId === runtime.mode && task.status === "active") || null;
+  }
+  return null;
+}
+
+function getActiveTaskDef(rootState = state) {
+  const task = getActiveTaskInstance(rootState);
+  if (task?.type && TASK_DEFS[task.type]) {
+    return TASK_DEFS[task.type];
+  }
+  return findTaskDefByActivityId(getActiveTaskRuntime(rootState).mode, TASK_DEFS);
+}
+
+function getActiveRefiningSession(rootState = state) {
+  const refining = getActiveTaskRuntime(rootState).refining;
+  if (!refining) {
+    return null;
+  }
+  if (refining.attempt && Array.isArray(refining.attempt.deck)) {
+    return refining;
+  }
+  if (Array.isArray(refining.deck)) {
+    return {
+      roundIndex: 1,
+      maxRounds: 1,
+      totalScore: 0,
+      roundResults: [],
+      attempt: refining,
+    };
+  }
+  return null;
+}
+
+function getActiveRefiningAttempt(rootState = state) {
+  return getActiveRefiningSession(rootState)?.attempt || null;
+}
+
+function getActiveTaskActivity(rootState = state) {
+  const runtime = getActiveTaskRuntime(rootState);
+  return getActivity(runtime.mode) || getActivity(getActiveTaskDef(rootState)?.activityId) || null;
+}
+
+function getTaskRemainingDays(rootState = state, task = getActiveTaskInstance(rootState)) {
+  if (!task) {
+    return 0;
+  }
+  return Math.max(0, Number(task.expiresOnDay || 0) - Number(rootState.day || 0) + 1);
+}
+
+function getTaskMarkLabel(mark) {
+  return UI_TEXT.summary?.taskMarkLabels?.[mark] || UI_TEXT.summary?.taskMarkLabels?.default || mark || "任务";
+}
+
+function getRefiningCardLabel(cardOrType) {
+  const type = typeof cardOrType === "string" ? cardOrType : cardOrType?.type;
+  return REFINING_CARD_TYPES?.[type]?.label || type || UI_TEXT.task?.unknownMaterial || "未知材料";
+}
+
+function getTaskRequirementText(taskDef = getActiveTaskDef()) {
+  const requirements = Object.entries(taskDef?.objective?.materialRequirements || {});
+  if (!requirements.length) {
+    return "";
+  }
+  return requirements
+    .map(([type, count]) => `${count} × ${getRefiningCardLabel(type)}`)
+    .join(" / ");
+}
+
+function getSelectedTaskCard(rootState = state) {
+  const attempt = getActiveRefiningAttempt(rootState);
+  if (!attempt?.selectedCardId) {
+    return null;
+  }
+  return attempt.deck.find((card) => card.id === attempt.selectedCardId) || null;
+}
+
+function getTaskStatusText(rootState = state) {
+  const taskText = UI_TEXT.task || {};
+  const attempt = getActiveRefiningAttempt(rootState);
+  if (!attempt) {
+    return taskText.pending || "";
+  }
+  if (attempt.slots.every(Boolean)) {
+    return taskText.ready || "";
+  }
+  const selectedCard = getSelectedTaskCard(rootState);
+  if (selectedCard) {
+    return typeof taskText.selectedCard === "function"
+      ? taskText.selectedCard(getRefiningCardLabel(selectedCard))
+      : getRefiningCardLabel(selectedCard);
+  }
+  return taskText.pending || "";
+}
+
+function resetTaskRuntimeForState(rootState = state) {
+  rootState.taskRuntime = createEmptyTaskRuntimeState();
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -560,6 +818,9 @@ function getPlanningScheduleHintText(filled, total) {
 }
 
 function getFlowHotkeysText() {
+  if (state.mode === "task") {
+    return "Arrow keys switch task controls / Space or Enter activates / F fullscreen";
+  }
   return `快捷键：1-${SLOT_NAMES.length} 选时段，空格填入活动；白天推进按空格/Enter，P 切自动播放；F 全屏。`;
 }
 
@@ -662,13 +923,17 @@ function getMainFocusSkill() {
 function runSessionCommand(command) {
   return dispatchSessionCommand(state, command, {
     ...sessionOptions,
+    initialActivityId: getDefaultPlanningActivityId(state),
     courseSelectionBlocks: COURSE_SELECTION_BLOCKS,
     schedulePresets: SCHEDULE_PRESETS,
     defaultArchetypeId: ARCHETYPES[0].id,
+    taskDefs: TASK_DEFS,
     copy: RUNTIME_COPY,
     uiText: UI_TEXT,
     getArchetype,
     getActivity,
+    syncWeeklyTaskProgress: syncWeeklyTaskProgressForState,
+    isActivityAssignable: isPlanningActivityAssignable,
     addLog,
     sessionOptions,
   });
@@ -683,8 +948,11 @@ function createDayFlowContext() {
     storyBeats: STORY_BEATS,
     dayModifiers: DAY_MODIFIERS,
     randomEvents: RANDOM_EVENTS,
-    fallbackActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
+    fallbackActivityId: getDefaultPlanningActivityId(state),
+    taskDefs: TASK_DEFS,
     getActivity,
+    beginTaskActivityForSlot,
+    handleResolvedCourseTaskProgress: handleResolvedCourseTaskProgressFromRuntime,
     getMainFocusSkill,
     addLog,
     pushTimeline,
@@ -704,10 +972,12 @@ function createNightFlowContext(pieceId = state.memory.selectedPiece) {
     uiText: UI_TEXT,
     copy: RUNTIME_COPY,
     slotCount: SLOT_NAMES.length,
-    defaultFreeActivityId: PLANNING_ACTIVITIES[0]?.id || ACTIVITIES[0].id,
+    defaultFreeActivityId: getDefaultPlanningActivityId(state),
+    getDefaultPlanningActivityId,
     pieceId,
     getMainFocusSkill,
     addLog,
+    expireTimedTasksForDay: expireTimedTasksForDayForState,
     finishWeek,
     finishRun,
   };
@@ -791,15 +1061,16 @@ function assignActivity(activityId) {
 }
 
 function cycleSelectedActivity(delta) {
-  if (state.scheduleLocks[state.selectedSlot] || !PLANNING_ACTIVITIES.length) {
+  const planningActivities = getPlanningActivities();
+  if (state.scheduleLocks[state.selectedSlot] || !planningActivities.length) {
     return;
   }
   const currentIndex = Math.max(
     0,
-    PLANNING_ACTIVITIES.findIndex((activity) => activity.id === state.selectedActivity)
+    planningActivities.findIndex((activity) => activity.id === state.selectedActivity)
   );
-  const nextIndex = (currentIndex + delta + PLANNING_ACTIVITIES.length) % PLANNING_ACTIVITIES.length;
-  state.selectedActivity = PLANNING_ACTIVITIES[nextIndex].id;
+  const nextIndex = (currentIndex + delta + planningActivities.length) % planningActivities.length;
+  state.selectedActivity = planningActivities[nextIndex].id;
   syncUi();
 }
 
@@ -993,13 +1264,175 @@ function finishRun() {
 }
 
 function continueWeek() {
-  runSessionCommand({ type: "run/continue-week" });
+  const ok = runSessionCommand({ type: "run/continue-week" });
   syncUi();
+  return ok;
 }
 
 function restartGame() {
   runSessionCommand({ type: "run/restart" });
   syncUi();
+}
+
+function revealOrSelectTaskCard(cardId) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveRefiningAttempt(state);
+  if (!attempt) {
+    return false;
+  }
+  const card = attempt.deck.find((item) => item.id === cardId);
+  if (!card || card.used) {
+    return false;
+  }
+  if (!card.revealed) {
+    const revealed = revealRefiningCard(attempt, cardId);
+    if (revealed) {
+      attempt.selectedCardId = null;
+      syncUi();
+    }
+    return revealed;
+  }
+  attempt.selectedCardId = attempt.selectedCardId === cardId ? null : cardId;
+  syncUi();
+  return true;
+}
+
+function placeSelectedTaskCard(slotIndex) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveRefiningAttempt(state);
+  if (!attempt?.selectedCardId) {
+    return false;
+  }
+  const placed = placeRefiningCardInSlot(attempt, attempt.selectedCardId, slotIndex);
+  if (!placed) {
+    return false;
+  }
+  attempt.selectedCardId = null;
+  syncUi();
+  return true;
+}
+
+function finishTaskAttempt(result) {
+  const runtime = getActiveTaskRuntime(state);
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const activity = getActiveTaskActivity(state);
+  if (!task || !taskDef || !activity) {
+    resetTaskRuntimeForState(state);
+    state.mode = "resolving";
+    state.scene = "resolving";
+    syncUi();
+    return false;
+  }
+
+  const roundOutcome =
+    typeof applyRefiningTaskRound === "function"
+      ? applyRefiningTaskRound(state, result, { taskDef, rng: state.rng })
+      : { status: result.success ? "success" : "failure", finalResult: result, session: runtime.refining };
+
+  runtime.refining = roundOutcome.session;
+
+  if (roundOutcome.status === "continue") {
+    runtime.result = result;
+    state.tasks.lastStory = {
+      title: `${activity.name} · 第 ${Math.max(1, Number(roundOutcome.session?.roundIndex || 1) - 1)} 轮完成`,
+      body: `本轮 ${result.score} 分，累计 ${roundOutcome.session?.totalScore || 0} 分，进入下一轮。`,
+      speaker: "mentor",
+    };
+    syncUi();
+    return true;
+  }
+
+  const finalResult = roundOutcome.finalResult || result;
+  if (finalResult.success) {
+    applyEffectBundle(taskDef.rewards);
+    normalizeState();
+    const summaryMark = taskDef.rewards?.summaryMark;
+    if (summaryMark && !state.tasks.completedMarks.includes(summaryMark)) {
+      state.tasks.completedMarks.push(summaryMark);
+    }
+    task.status = "completed";
+    task.rewardClaimed = true;
+  }
+
+  const detail = RUNTIME_COPY.taskAttemptResult(activity.name, {
+    success: finalResult.success,
+    score: finalResult.score,
+    recipeKey: finalResult.recipeKey,
+    objectiveName: taskDef.objective?.name,
+    remainingDays: getTaskRemainingDays(state, task),
+  });
+  const slotIndex = Number.isInteger(runtime.pendingSlotIndex)
+    ? runtime.pendingSlotIndex
+    : Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+
+  pushTimeline(slotIndex, activity, detail.body);
+  addLog(detail.title, detail.body);
+  state.tasks.lastStory = structuredClone(detail);
+  resumeResolvingAfterTaskAttempt(state, detail, {
+    slotNames: SLOT_NAMES,
+    uiText: UI_TEXT,
+    resetTaskRuntime: resetTaskRuntimeForState,
+  });
+  syncUi();
+  return true;
+}
+
+function confirmTaskAttempt() {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const attempt = getActiveRefiningAttempt(state);
+  const taskDef = getActiveTaskDef(state);
+  if (!attempt || !taskDef) {
+    return false;
+  }
+  const result = resolveRefiningAttempt(attempt, taskDef);
+  if (!result?.complete) {
+    syncUi();
+    return false;
+  }
+  return finishTaskAttempt(result);
+}
+
+function getTaskControlElements() {
+  return Array.from(mainPanel.querySelectorAll("[data-task-control]")).filter((element) => !element.disabled);
+}
+
+function focusTaskControl(delta = 1) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const controls = getTaskControlElements();
+  if (!controls.length) {
+    return false;
+  }
+  const activeIndex = controls.indexOf(document.activeElement);
+  if (activeIndex < 0) {
+    controls[delta < 0 ? controls.length - 1 : 0].focus();
+    return true;
+  }
+  const nextIndex = (activeIndex + delta + controls.length) % controls.length;
+  controls[nextIndex].focus();
+  return true;
+}
+
+function activateTaskControl() {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const controls = getTaskControlElements();
+  if (!controls.length) {
+    return false;
+  }
+  const target = controls.includes(document.activeElement) ? document.activeElement : controls[0];
+  target.focus();
+  target.click();
+  return true;
 }
 
 function render() {
@@ -1040,6 +1473,10 @@ function drawScene() {
   }
   if (state.mode === "summary") {
     drawSummaryScene();
+    return;
+  }
+  if (state.mode === "task") {
+    drawTaskScene();
     return;
   }
   if (state.mode === "resolving") {
@@ -1151,6 +1588,116 @@ function drawResolvingScene() {
   ctx.font = "18px 'Microsoft YaHei'";
   wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
   drawCanvasProgress(470, 330, 340, 16, state.progress);
+  drawTimelineStrip();
+}
+
+function drawTaskScene() {
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "炼器委托" };
+  const attempt = getActiveRefiningAttempt(state);
+  const stageView =
+    attempt && typeof buildRefiningStageView === "function"
+      ? buildRefiningStageView(attempt, REFINING_STAGE_LAYOUT)
+      : { cards: [], slots: [] };
+  const remainingDays = getTaskRemainingDays(state, task);
+  const title =
+    typeof UI_TEXT.canvas?.taskTitle === "function"
+      ? UI_TEXT.canvas.taskTitle(state.day, activity.name)
+      : `第 ${state.day} 天 · ${activity.name}`;
+  const subtitle =
+    typeof UI_TEXT.canvas?.taskSubtitle === "function"
+      ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activity.name)
+      : `剩余 ${remainingDays} 天 · ${taskDef?.objective?.name || activity.name}`;
+
+  drawAcademyBackdrop("#2b1d16", "#6b4125");
+  drawBanner(title, subtitle);
+
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillRect(56, 134, 430, 348);
+  ctx.strokeStyle = "rgba(137,187,255,0.32)";
+  ctx.strokeRect(56, 134, 430, 348);
+  ctx.fillStyle = "#edf4ff";
+  ctx.font = "22px 'Microsoft YaHei'";
+  ctx.fillText("翻牌区", 82, 164);
+  ctx.fillStyle = "#b6c9df";
+  ctx.font = "14px 'Microsoft YaHei'";
+  ctx.fillText("点击卡牌翻开，再点击已翻开的卡牌选中", 82, 192);
+
+  stageView.cards.forEach((card) => {
+    ctx.fillStyle = card.isUsed
+      ? "rgba(99,211,177,0.18)"
+      : card.revealed
+        ? "rgba(137,187,255,0.18)"
+        : "rgba(255,255,255,0.08)";
+    ctx.fillRect(card.x, card.y, card.width, card.height);
+    ctx.strokeStyle = card.isSelected ? "#f0c36c" : card.isUsed ? "rgba(99,211,177,0.54)" : "rgba(255,255,255,0.18)";
+    ctx.lineWidth = card.isSelected ? 3 : 1.5;
+    ctx.strokeRect(card.x, card.y, card.width, card.height);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = card.revealed ? "18px 'Microsoft YaHei'" : "28px 'Microsoft YaHei'";
+    ctx.fillText(card.revealed ? getRefiningCardLabel(card) : "?", card.x + card.width / 2, card.y + 38);
+    ctx.fillStyle = card.isUsed ? "#63d3b1" : card.revealed ? "#b6c9df" : "#9ab1c8";
+    ctx.font = "12px 'Microsoft YaHei'";
+    ctx.fillText(card.isUsed ? "已放入牌阵" : card.revealed ? "再次点击选中" : "点击翻开", card.x + card.width / 2, card.y + 64);
+    ctx.textAlign = "left";
+  });
+
+  const slotCenters = stageView.slots.map((slot) => ({
+    x: slot.x + slot.width / 2,
+    y: slot.y + slot.height / 2,
+  }));
+  if (slotCenters.length === 3) {
+    ctx.strokeStyle = "rgba(240,195,108,0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(slotCenters[0].x, slotCenters[0].y);
+    ctx.lineTo(slotCenters[1].x, slotCenters[1].y);
+    ctx.lineTo(slotCenters[2].x, slotCenters[2].y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillRect(534, 134, 358, 348);
+  ctx.strokeStyle = "rgba(240,195,108,0.28)";
+  ctx.strokeRect(534, 134, 358, 348);
+  ctx.fillStyle = "#f0c36c";
+  ctx.font = "22px 'Microsoft YaHei'";
+  ctx.fillText("三角牌阵", 560, 164);
+  ctx.fillStyle = "#d7e6fb";
+  ctx.font = "15px 'Microsoft YaHei'";
+  wrapText(taskDef?.objective?.name || activity.name, 560, 192, 304, 24, "#edf4ff");
+  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 560, 238, 304, 22, "#b6c9df");
+
+  stageView.slots.forEach((slot) => {
+    const card = slot.cardId ? attempt?.deck?.find((entry) => entry.id === slot.cardId) : null;
+    const cardLabel = card ? getRefiningCardLabel(card) : null;
+    ctx.fillStyle = slot.cardId ? "rgba(99,211,177,0.24)" : "rgba(255,255,255,0.08)";
+    ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
+    ctx.strokeStyle = slot.cardId ? "rgba(99,211,177,0.6)" : "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(slot.x, slot.y, slot.width, slot.height);
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "14px 'Microsoft YaHei'";
+    ctx.fillText(`槽位 ${slot.index + 1}`, slot.x + 14, slot.y + 24);
+    ctx.font = "18px 'Microsoft YaHei'";
+    ctx.fillText(cardLabel || "待放置", slot.x + 14, slot.y + 52);
+  });
+
+  ctx.fillStyle = "rgba(8,18,29,0.68)";
+  ctx.fillRect(560, 438, 304, 30);
+  ctx.fillStyle = "#edf4ff";
+  ctx.font = "14px 'Microsoft YaHei'";
+  ctx.fillText(
+    getSelectedTaskCard(state)
+      ? `当前选中：${getRefiningCardLabel(getSelectedTaskCard(state))}`
+      : getTaskStatusText(state),
+    572,
+    458
+  );
   drawTimelineStrip();
 }
 
@@ -1399,6 +1946,9 @@ function getCurrentPhaseIndex() {
   if (state.mode === "menu") return -1;
   if (state.mode === "planning") return state.selectedSlot;
   if (state.mode === "resolving") return Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
+  if (state.mode === "task") {
+    return Math.min(Math.max(Number(getActiveTaskRuntime(state).pendingSlotIndex || 0), 0), SLOT_NAMES.length - 1);
+  }
   if (state.mode === "memory") return SLOT_NAMES.length - 1;
   return SLOT_NAMES.length - 1;
 }
@@ -1493,6 +2043,10 @@ function syncUi() {
       ? UI_TEXT.statusLine.planning(state.day, getSlotLabel(state.selectedSlot))
       : state.mode === "resolving"
         ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
+        : state.mode === "task"
+          ? typeof UI_TEXT.statusLine.task === "function"
+          ? UI_TEXT.statusLine.task(state.day, getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "炼器任务"))
+            : getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "炼器委托")
         : state.mode === "memory"
           ? UI_TEXT.statusLine.memory(state.day)
           : state.mode === "summary"
@@ -1632,6 +2186,8 @@ function renderFlowPanel() {
                   ? state.resolvingFlow.autoplay
                     ? UI_TEXT.flow.resolvingHintAuto
                     : UI_TEXT.flow.resolvingHintClick
+                  : state.mode === "task"
+                    ? UI_TEXT.flow.taskHint || getTaskStatusText(state)
                   : state.mode === "memory"
                     ? UI_TEXT.flow.memoryHint
                     : UI_TEXT.flow.summaryHint
@@ -1718,7 +2274,9 @@ function renderPlanningPanel() {
 
   const selectedSlotActivity = getActivity(state.schedule[state.selectedSlot]);
   const selectedSlotLocked = isPlanningSlotLocked(state.selectedSlot);
-  const activeActivity = getActivity(state.selectedActivity) || PLANNING_ACTIVITIES[0] || ACTIVITIES[0];
+  const planningActivities = getPlanningActivities();
+  const activeActivity =
+    planningActivities.find((activity) => activity.id === state.selectedActivity) || planningActivities[0] || ACTIVITIES[0];
   const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
   const todayFixedCourses = state.schedule
     .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: getSlotFullLabel(index) }))
@@ -1760,7 +2318,7 @@ function renderPlanningPanel() {
           : `
             <div class="planning-event-list">
               <div class="activity-grid planning-activity-grid">
-                ${PLANNING_ACTIVITIES.map(
+                ${planningActivities.map(
                   (activity) => `
                     <button class="activity-card ${state.selectedActivity === activity.id ? "active" : ""}" data-activity="${activity.id}" data-tone="${activity.tone}">
                       <strong>${activity.name}</strong>
@@ -1902,6 +2460,10 @@ function renderMainPanel() {
   }
   if (state.mode === "course_selection") {
     renderCourseSelectionPanel();
+    return;
+  }
+  if (state.mode === "task") {
+    renderTaskPanel();
     return;
   }
   if (state.mode === "planning" || state.mode === "resolving") {
@@ -2218,12 +2780,132 @@ function renderMemoryPanel() {
   renderMemoryPanelCompact();
 }
 
+function renderTaskPanel() {
+  const taskText = UI_TEXT.task || {};
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const session = getActiveRefiningSession(state);
+  const activity = getActiveTaskActivity(state) || { name: taskText.title || "炼器委托", summary: "" };
+  const attempt = getActiveRefiningAttempt(state);
+  const selectedCard = getSelectedTaskCard(state);
+  const panelState = buildRefiningTaskPanelState({
+    taskText,
+    task,
+    taskDef,
+    activity,
+    attempt,
+    refiningSession: session,
+    getCardLabel: getRefiningCardLabel,
+    requirementText: getTaskRequirementText(taskDef),
+    remainingDays: getTaskRemainingDays(state, task),
+    selectedCardLabel: selectedCard ? getRefiningCardLabel(selectedCard) : taskText.noSelection || "",
+    slotCardLabels: (attempt?.slots || [null, null, null]).map((cardId) => {
+      if (!cardId) {
+        return null;
+      }
+      const card = attempt?.deck?.find((entry) => entry.id === cardId);
+      return card ? getRefiningCardLabel(card) : null;
+    }),
+    statusText: getTaskStatusText(state),
+  });
+
+  mainPanel.innerHTML = renderRefiningTaskPanelHtml(panelState, taskText);
+  mainPanel.querySelector("#task-confirm-btn")?.addEventListener("click", confirmTaskAttempt);
+  return;
+  /*
+  const requirementText = getTaskRequirementText(taskDef);
+  const remainingDays = getTaskRemainingDays(state, task);
+  const canConfirm = Boolean(attempt?.slots?.every(Boolean));
+  const objectiveName = taskDef?.objective?.name || activity.name;
+  const cardsHtml = (attempt?.deck || [])
+    .map((card, index) => {
+      const label = card.revealed ? getRefiningCardLabel(card) : taskText.reveal || "翻开";
+      const detail = card.used
+        ? taskText.used || "已放入"
+        : card.revealed
+          ? getRefiningCardLabel(card)
+          : typeof taskText.hiddenCard === "function"
+            ? taskText.hiddenCard(index)
+            : `未翻开卡牌 ${index + 1}`;
+      return `
+        <button
+          class="activity-card ${attempt.selectedCardId === card.id ? "active" : ""}"
+          data-task-card="${card.id}"
+          data-task-control="card"
+          type="button"
+          ${card.used ? "disabled" : ""}
+        >
+          <strong>${label}</strong>
+          <small>${detail}</small>
+          <small>${card.used ? taskText.used || "已放置" : card.revealed ? taskText.select || "选中" : taskText.reveal || "翻开"}</small>
+        </button>
+      `;
+    })
+    .join("");
+  const slotsHtml = (attempt?.slots || [null, null, null])
+    .map((cardId, index) => `
+      <button class="ghost-button ${cardId ? "primary" : ""}" data-task-slot="${index}" data-task-control="slot" type="button">
+        ${(typeof taskText.slot === "function" ? taskText.slot(index) : `槽位 ${index + 1}`)}
+        <span>${cardId ? getRefiningCardLabel(cardId) : taskText.emptySlot || "空位"}</span>
+      </button>
+    `)
+    .join("");
+
+  mainPanel.innerHTML = `
+    <div class="planning-shell">
+      <div class="panel-title">
+        <h2>${taskText.title || "炼器任务"}</h2>
+        <span class="badge">${typeof taskText.remainingDays === "function" ? taskText.remainingDays(remainingDays) : remainingDays}</span>
+      </div>
+      <div class="story-card focus-callout">
+        <strong>${activity.name}</strong>
+        <small>${activity.summary || ""}</small>
+        <small>${task && typeof taskText.attemptCount === "function" ? taskText.attemptCount(task.attemptCount || 0) : ""}</small>
+      </div>
+      <div class="planning-meta-grid">
+        <div class="story-card">
+          <strong>${taskText.objective || "本次目标"}</strong>
+          <small>${objectiveName}</small>
+          <small>${typeof taskText.scoreTarget === "function" ? taskText.scoreTarget(taskDef?.objective?.scoreTarget || 0) : ""}</small>
+        </div>
+        <div class="story-card">
+          <strong>${taskText.requirement || "材料要求"}</strong>
+          <small>${typeof taskText.requirements === "function" ? taskText.requirements(requirementText) : requirementText}</small>
+          <small>${getTaskStatusText(state)}</small>
+        </div>
+      </div>
+      <div class="planning-event-list">
+        <div class="activity-grid planning-activity-grid">${cardsHtml}</div>
+      </div>
+      <div class="action-row">${slotsHtml}</div>
+      <div class="story-card" style="margin-top:16px;">
+        <strong>${taskText.selected || "当前选牌"}</strong>
+        <small>${selectedCard ? getRefiningCardLabel(selectedCard) : taskText.noSelection || "尚未选牌"}</small>
+        <small>${getTaskStatusText(state)}</small>
+      </div>
+      <div class="action-row planning-actions">
+        <button class="primary" id="task-confirm-btn" data-task-control="confirm" ${canConfirm ? "" : "disabled"}>${taskText.confirm || "确认结算"}</button>
+      </div>
+    </div>
+  `;
+
+  mainPanel.querySelectorAll("[data-task-card]").forEach((button) => {
+    button.addEventListener("click", () => revealOrSelectTaskCard(button.dataset.taskCard));
+  });
+  mainPanel.querySelectorAll("[data-task-slot]").forEach((button) => {
+    button.addEventListener("click", () => placeSelectedTaskCard(Number(button.dataset.taskSlot)));
+  });
+  mainPanel.querySelector("#task-confirm-btn")?.addEventListener("click", confirmTaskAttempt);
+  */
+}
+
 function renderSummaryPanel() {
   const rank = state.summary?.rank || UI_TEXT.summary.unranked;
   const bestSkill = state.summary?.bestSkill || ["dao", 0];
   const summaryWeek = getSummaryWeek();
   const summaryTotalWeeks = getSummaryTotalWeeks();
   const canContinue = Boolean(state.summary?.canContinue);
+  const taskMarks = Array.isArray(state.summary?.taskMarks) ? state.summary.taskMarks : [];
   const dominantRouteLabels = {
     study: "课业",
     work: "打工",
@@ -2252,6 +2934,15 @@ function renderSummaryPanel() {
       <button class="primary" id="restart-btn">${UI_TEXT.summary.restartBtn}</button>
     </div>
   `;
+  if (taskMarks.length) {
+    const summaryGrid = mainPanel.querySelector(".summary-grid");
+    if (summaryGrid) {
+      summaryGrid.insertAdjacentHTML(
+        "beforeend",
+        metric(UI_TEXT.summary.taskMarks || "委托印记", taskMarks.map(getTaskMarkLabel).join(" / "))
+      );
+    }
+  }
   if (canContinue) {
     mainPanel.querySelector("#continue-week-btn").addEventListener("click", continueWeek);
   }
@@ -2457,6 +3148,31 @@ function renderLeftPanel() {
     return;
   }
 
+if (state.mode === "task") {
+    const task = getActiveTaskInstance(state);
+    const taskDef = getActiveTaskDef(state);
+    const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "炼器委托" };
+    leftPanel.innerHTML = `
+      <div class="panel-title">
+        <h2>${UI_TEXT.left.scheduleTitle}</h2>
+        <span class="badge">${typeof UI_TEXT.task?.remainingDays === "function" ? UI_TEXT.task.remainingDays(getTaskRemainingDays(state, task)) : getTaskRemainingDays(state, task)}</span>
+      </div>
+      <div class="left-info-grid">
+        <div class="left-info-card">
+          <strong>${activity.name}</strong>
+          <small>${taskDef?.objective?.name || ""}</small>
+          <small>${typeof UI_TEXT.task?.requirements === "function" ? UI_TEXT.task.requirements(getTaskRequirementText(taskDef)) : getTaskRequirementText(taskDef)}</small>
+        </div>
+        <div class="left-info-card">
+          <strong>${UI_TEXT.task?.selected || "当前选牌"}</strong>
+          <small>${getSelectedTaskCard(state) ? getRefiningCardLabel(getSelectedTaskCard(state)) : UI_TEXT.task?.noSelection || "尚未选牌"}</small>
+          <small>${getTaskStatusText(state)}</small>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (state.mode === "memory") {
     const builtCount = getMemoryBuiltCount();
     leftPanel.innerHTML = `
@@ -2552,6 +3268,8 @@ document.addEventListener(
     startDay,
     advanceResolvingFlow,
     toggleResolvingAutoplay,
+    focusTaskControl,
+    activateTaskControl,
     moveMemoryCursor,
     cycleMemoryPiece,
     placeMemoryPiece,
@@ -2588,6 +3306,30 @@ feedbackToggleBtn.addEventListener("click", () => {
 overlayBackdrop.addEventListener("click", () => {
   toggleStatsPanel(false);
   closeInfoModal();
+});
+canvas.addEventListener("click", (event) => {
+  if (state.mode !== "task" || typeof buildRefiningStageView !== "function" || typeof hitTestRefiningStage !== "function") {
+    return;
+  }
+  const attempt = getActiveRefiningAttempt(state);
+  if (!attempt) {
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+  const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+  const view = buildRefiningStageView(attempt, REFINING_STAGE_LAYOUT);
+  const target = hitTestRefiningStage(view, x, y);
+  if (!target) {
+    return;
+  }
+  if (target.kind === "card") {
+    revealOrSelectTaskCard(target.id);
+    return;
+  }
+  if (target.kind === "slot") {
+    placeSelectedTaskCard(target.index);
+  }
 });
 
 applyArchetypeIfNeeded();

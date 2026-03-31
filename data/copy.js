@@ -132,6 +132,41 @@ const COPY = {
       return `术式楼与悟理阁经由衔接塔共鸣 ${count} 次，额外凝成 ${count} 点灵力。`;
     },
   },
+  taskUnlocked(taskName, expiresOnDay) {
+    return {
+      title: "委托解锁",
+      body: `「${taskName}」已开放，请在第 ${expiresOnDay} 天前完成。`,
+      speaker: "工坊导师",
+    };
+  },
+  taskExpired(taskName) {
+    return {
+      title: "委托过期",
+      body: `「${taskName}」已过期限，未能在规定时限内完成。`,
+      speaker: "工坊导师",
+    };
+  },
+  taskAttemptResult(taskName, result = {}) {
+    const objectiveName = result.objectiveName || "炼器目标";
+    if (result.success) {
+      return {
+        title: `${taskName} · 完成`,
+        body: `你完成了${objectiveName}，得分 ${result.score || 0}。本周委托印记已记录。`,
+        speaker: "工坊导师",
+      };
+    }
+
+    const retryText =
+      Number(result.remainingDays || 0) > 0
+        ? `还剩 ${result.remainingDays} 天可再次尝试。`
+        : "已无剩余天数可再次尝试。";
+
+    return {
+      title: `${taskName} · 未达标`,
+      body: `本次尝试未达到${objectiveName}要求。得分 ${result.score || 0}。${retryText}`,
+      speaker: "工坊导师",
+    };
+  },
   summary: {
     defaultMajorBeat: "这一周你仍在铺垫人脉和学业。",
     clueMajorBeat: "你又向失踪舍友的线索推进了一步。",
