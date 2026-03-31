@@ -222,3 +222,81 @@ test("resolveRefiningAttempt does not succeed when taskDef is missing", () => {
   assert.equal(result.complete, true);
   assert.equal(result.success, false);
 });
+
+test("createRefiningSessionState seeds round metadata from task config", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningSessionState } = windowObject.GAME_RUNTIME;
+
+  const session = createRefiningSessionState(TASK_DEFS.artifact_refining, makeRng(11));
+
+  assert.equal(TASK_DEFS.artifact_refining.rounds.maxRounds, 3);
+  assert.equal(session.roundIndex, 1);
+  assert.equal(session.maxRounds, TASK_DEFS.artifact_refining.rounds.maxRounds);
+  assert.equal(session.totalScore, 0);
+  assert.deepEqual(realmSafe(session.roundResults), []);
+  assert.doesNotThrow(() => structuredClone(session));
+  assert.equal(session.attempt.deck.length, 9);
+});
+
+test("advanceRefiningSession preserves unused cards and replaces only used cards", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningSessionState, advanceRefiningSession } = windowObject.GAME_RUNTIME;
+
+  const session = createRefiningSessionState(TASK_DEFS.artifact_refining, makeRng(12));
+  session.attempt.deck[0].revealed = true;
+  session.attempt.deck[1].revealed = true;
+  session.attempt.deck[1].used = true;
+  session.attempt.slots = [session.attempt.deck[1].id, null, null];
+
+  const preservedCard = session.attempt.deck[0];
+  const replacedCard = session.attempt.deck[1];
+
+  const nextSession = advanceRefiningSession(session, {
+    score: 1,
+    success: false,
+    complete: true,
+    recipeKey: "xuantie|xuantie|xuantie",
+  });
+
+  assert.equal(nextSession.roundIndex, 2);
+  assert.equal(nextSession.totalScore, 1);
+  assert.equal(nextSession.roundResults.length, 1);
+  assert.equal(nextSession.attempt.deck[0].id, preservedCard.id);
+  assert.equal(nextSession.attempt.deck[0].type, preservedCard.type);
+  assert.equal(nextSession.attempt.deck[0].revealed, true);
+  assert.notEqual(nextSession.attempt.deck[1].id, replacedCard.id);
+  assert.equal(nextSession.attempt.deck[1].used, false);
+  assert.equal(nextSession.attempt.deck[1].revealed, false);
+  assert.deepEqual(realmSafe(nextSession.attempt.slots), [null, null, null]);
+});
+
+test("settleRefiningSession ends early on cumulative success and fails only after max rounds", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningSessionState, settleRefiningSession } = windowObject.GAME_RUNTIME;
+
+  const successSession = createRefiningSessionState(TASK_DEFS.artifact_refining, makeRng(13));
+  successSession.totalScore = 2;
+  const successOutcome = settleRefiningSession(
+    successSession,
+    { score: 1, success: false, complete: true, recipeKey: "lingshi|xuantie|xuantie" },
+    TASK_DEFS.artifact_refining
+  );
+
+  assert.equal(successOutcome.status, "success");
+  assert.equal(successOutcome.session.totalScore, 3);
+  assert.equal(successOutcome.session.roundResults.length, 1);
+
+  const failureSession = createRefiningSessionState(TASK_DEFS.artifact_refining, makeRng(14));
+  failureSession.roundIndex = failureSession.maxRounds;
+  const failureOutcome = settleRefiningSession(
+    failureSession,
+    { score: 1, success: false, complete: true, recipeKey: "xuantie|xuantie|xuantie" },
+    TASK_DEFS.artifact_refining
+  );
+
+  assert.equal(failureOutcome.status, "failure");
+  assert.equal(failureOutcome.session.totalScore, 1);
+});

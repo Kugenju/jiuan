@@ -37,13 +37,17 @@
     return deck;
   }
 
-  function createRefiningAttemptState(taskDef, rng) {
-    const deck = BASE_DECK.map((type, index) => ({
-      id: `card-${index}`,
+  function createRefiningCard(type, index, suffix = "") {
+    return {
+      id: `card-${index}${suffix}`,
       type,
       revealed: false,
       used: false,
-    }));
+    };
+  }
+
+  function createRefiningAttemptState(taskDef, rng) {
+    const deck = BASE_DECK.map((type, index) => createRefiningCard(type, index));
     shuffleDeck(deck, rng);
 
     return {
@@ -54,6 +58,69 @@
       selectedCardId: null,
       result: null,
     };
+  }
+
+  function createReplacementCard(index, rng) {
+    const nextType = BASE_DECK[Math.floor(getRngValue(rng) * BASE_DECK.length)] || BASE_DECK[0];
+    const suffix = `-${Math.floor(getRngValue(rng) * 1e9)}`;
+    return createRefiningCard(nextType, index, suffix);
+  }
+
+  function createRefiningSessionState(taskDef, rng) {
+    return {
+      roundIndex: 1,
+      maxRounds: Math.max(1, Number(taskDef?.rounds?.maxRounds || 1)),
+      totalScore: 0,
+      roundResults: [],
+      attempt: createRefiningAttemptState(taskDef, rng),
+    };
+  }
+
+  function advanceRefiningSession(session, result, rng) {
+    if (!session?.attempt || !Array.isArray(session.attempt.deck)) {
+      return session;
+    }
+
+    const nextAttempt = {
+      ...session.attempt,
+      deck: session.attempt.deck.map((card, index) => {
+        if (!card.used) {
+          return { ...card };
+        }
+        return createReplacementCard(index, rng);
+      }),
+      slots: [null, null, null],
+      revealsRemaining: 3,
+      selectedCardId: null,
+      result: null,
+    };
+
+    return {
+      ...session,
+      roundIndex: session.roundIndex + 1,
+      totalScore: session.totalScore + (result?.score || 0),
+      roundResults: session.roundResults.concat([{ ...result, roundIndex: session.roundIndex }]),
+      attempt: nextAttempt,
+    };
+  }
+
+  function settleRefiningSession(session, result, taskDef, rng) {
+    const scoredResult = result || { score: 0, success: false, complete: false, recipeKey: null };
+    const totalScore = session.totalScore + (scoredResult.score || 0);
+    const roundResults = session.roundResults.concat([{ ...scoredResult, roundIndex: session.roundIndex }]);
+    const baseSession = {
+      ...session,
+      totalScore,
+      roundResults,
+    };
+
+    if (totalScore >= Number(taskDef?.objective?.scoreTarget || 0)) {
+      return { status: "success", session: baseSession };
+    }
+    if (session.roundIndex >= session.maxRounds) {
+      return { status: "failure", session: baseSession };
+    }
+    return { status: "continue", session: advanceRefiningSession(session, scoredResult, rng) };
   }
 
   function revealNeighborCards(attempt, index) {
@@ -257,6 +324,9 @@
 
   Object.assign(window.GAME_RUNTIME, {
     createRefiningAttemptState,
+    createRefiningSessionState,
+    advanceRefiningSession,
+    settleRefiningSession,
     revealRefiningCard,
     placeRefiningCardInSlot,
     resolveRefiningAttempt,

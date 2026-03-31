@@ -7,6 +7,11 @@ const TASK_DEFS = {
     skill: "craft",
     durationDays: 3,
     weeklyLimit: 1,
+    rounds: {
+      maxRounds: 3,
+      refreshMode: "replace_used_only",
+      refreshPool: "base_refining_pool",
+    },
     rewards: {
       skills: { craft: 1 },
       resources: { spirit: 1, insight: 1 },
