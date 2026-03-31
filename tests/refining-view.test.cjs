@@ -33,7 +33,13 @@ function realmSafe(value) {
 
 test("buildRefiningStageView derives card and triangle targets for stage interaction", () => {
   const windowObject = loadScripts(["src/app/refining-view.js"]);
-  const { buildRefiningStageView, hitTestRefiningStage, createRefiningPresetDecks } = windowObject.GAME_RUNTIME;
+  const {
+    buildRefiningStageView,
+    hitTestRefiningStage,
+    createRefiningPresetDecks,
+    buildRefiningTaskPanelState,
+    renderRefiningTaskPanelHtml,
+  } = windowObject.GAME_RUNTIME;
 
   const attempt = {
     deck: [
@@ -75,4 +81,105 @@ test("buildRefiningStageView derives card and triangle targets for stage interac
   const presets = createRefiningPresetDecks();
   assert.deepEqual(Object.keys(presets).sort(), ["failure_basic", "guanxing_demo", "lingduan_demo", "success_basic"]);
   assert.equal(presets.success_basic.length, 9);
+
+  const panelState = buildRefiningTaskPanelState({
+    taskText: {
+      remainingDays: (days) => `${days}d`,
+      scoreTarget: (score) => `target:${score}`,
+      requirements: (text) => text,
+      slot: (index) => `slot-${index + 1}`,
+      noSelection: "none",
+      attemptCount: (count) => `attempt:${count}`,
+    },
+    task: { attemptCount: 2 },
+    taskDef: {
+      objective: {
+        name: "Spirit Needle",
+        scoreTarget: 3,
+      },
+    },
+    activity: { name: "Refining Task", summary: "summary" },
+    attempt,
+    requirementText: "xuantie / lingshi",
+    remainingDays: 2,
+    selectedCardLabel: "lingshi",
+    statusText: "ready",
+  });
+
+  assert.equal(panelState.canConfirm, false);
+  assert.equal(panelState.remainingDaysText, "2d");
+  assert.equal(panelState.attemptCountText, "attempt:2");
+  assert.equal(panelState.selectedCardText, "lingshi");
+  assert.deepEqual(realmSafe(panelState.slotSummaries), [
+    { index: 0, label: "slot-1", cardLabel: null },
+    { index: 1, label: "slot-2", cardLabel: "lingshi" },
+    { index: 2, label: "slot-3", cardLabel: null },
+  ]);
+  assert.equal(Object.prototype.hasOwnProperty.call(panelState, "cards"), false);
+
+  const panelHtml = renderRefiningTaskPanelHtml(panelState, {
+    title: "Refining Task",
+    objective: "Objective",
+    requirement: "Requirement",
+    selected: "Selected",
+    emptySlot: "empty",
+    confirm: "confirm",
+  });
+
+  assert.match(panelHtml, /task-summary-shell/);
+  assert.match(panelHtml, /task-slot-summary-grid/);
+  assert.match(panelHtml, /data-task-control="confirm"/);
+  assert.doesNotMatch(panelHtml, /data-task-card=/);
+  assert.doesNotMatch(panelHtml, /data-task-slot=/);
+});
+
+test("buildRefiningTaskPanelState includes round progress and cumulative score", () => {
+  const windowObject = loadScripts(["src/app/refining-view.js"]);
+  const { buildRefiningTaskPanelState } = windowObject.GAME_RUNTIME;
+
+  const panelState = buildRefiningTaskPanelState({
+    taskText: {
+      roundProgress: (current, max) => `${current}/${max}`,
+      totalScore: (score) => `score:${score}`,
+    },
+    refiningSession: {
+      roundIndex: 2,
+      maxRounds: 3,
+      totalScore: 4,
+      roundResults: [{ roundIndex: 1, score: 1 }, { roundIndex: 2, score: 3 }],
+    },
+    attempt: { slots: [null, null, null] },
+  });
+
+  assert.equal(panelState.roundProgressText, "2/3");
+  assert.equal(panelState.totalScoreText, "score:4");
+  assert.deepEqual(realmSafe(panelState.roundHistory), [
+    { label: "R1", score: 1 },
+    { label: "R2", score: 3 },
+  ]);
+});
+
+test("buildRefiningTaskPanelState resolves slot labels from placed cards instead of raw ids", () => {
+  const windowObject = loadScripts(["src/app/refining-view.js"]);
+  const { buildRefiningTaskPanelState } = windowObject.GAME_RUNTIME;
+
+  const panelState = buildRefiningTaskPanelState({
+    taskText: {
+      slot: (index) => `slot-${index + 1}`,
+    },
+    attempt: {
+      deck: [
+        { id: "card-0", type: "xuantie", revealed: true, used: true },
+        { id: "card-1", type: "lingshi", revealed: true, used: true },
+      ],
+      slots: ["card-0", "card-1", null],
+    },
+    getCardLabel: (cardOrType) => `label:${typeof cardOrType === "string" ? cardOrType : cardOrType?.type}`,
+  });
+
+  assert.deepEqual(realmSafe(panelState.slotSummaries), [
+    { index: 0, label: "slot-1", cardLabel: "label:xuantie" },
+    { index: 1, label: "slot-2", cardLabel: "label:lingshi" },
+    { index: 2, label: "slot-3", cardLabel: null },
+  ]);
 });

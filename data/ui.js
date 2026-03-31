@@ -31,7 +31,7 @@ const UI_TEXT = {
       return `第 ${day} 天剧情推进中：${progress}%${autoplay ? "（自动）" : "（点击）"}`;
     },
     task(day, taskName) {
-      return `Day ${day} refining task: ${taskName}`;
+      return `第 ${day} 天炼器委托：${taskName}`;
     },
     memory(day) {
       return `第 ${day} 夜正在建构记忆`;
@@ -55,6 +55,12 @@ const UI_TEXT = {
     resolvingSubtitle: "点击推进剧情，或开启自动播放。",
     resolvingSlot(slotName) {
       return `当前时段：${slotName}`;
+    },
+    taskTitle(day, taskName) {
+      return `第 ${day} 天 · ${taskName}`;
+    },
+    taskSubtitle(remainingDays, objectiveName) {
+      return `剩余 ${remainingDays} 天 · ${objectiveName}`;
     },
     memoryTitle: "夜间记忆建构",
     memorySubtitle: "先以灵台锚片解锁灰域节点，再于节点建塔，以衔接塔贯通边位。",
@@ -188,34 +194,50 @@ const UI_TEXT = {
     startBtn: "开始第一周",
   },
   task: {
-    title: "Refining Task",
-    objective: "Objective",
-    requirement: "Requirements",
-    selected: "Selected Card",
-    confirm: "Confirm Attempt",
-    reveal: "Reveal",
-    emptySlot: "Empty",
-    noSelection: "No card selected",
-    pending: "Reveal and place three cards to resolve the attempt.",
-    ready: "All slots filled. Confirm to resolve.",
-    used: "Placed",
+    title: "炼器委托",
+    objective: "委托目标",
+    requirement: "材料要求",
+    selected: "当前选牌",
+    confirm: "确认结算",
+    reveal: "翻开",
+    emptySlot: "空位",
+    noSelection: "未选中卡牌",
+    pending: "请先翻开并放置三张卡牌，再结算本次尝试。",
+    ready: "卡槽已满，可确认结算。",
+    used: "已放置",
+    select: "选中",
+    unknownMaterial: "未知材料",
     remainingDays(days) {
-      return `${days} day${days === 1 ? "" : "s"} left`;
+      return `剩余 ${days} 天`;
     },
     slot(index) {
-      return `Slot ${index + 1}`;
+      return `槽位 ${index + 1}`;
     },
     scoreTarget(score) {
-      return `Target score: ${score}`;
+      return `目标分数：${score}`;
     },
     requirements(requirementText) {
-      return requirementText ? `Need at least: ${requirementText}` : "No extra material requirement";
+      return requirementText ? `至少需要：${requirementText}` : "无额外材料要求";
     },
     selectedCard(cardName) {
-      return `Selected: ${cardName}`;
+      return `已选中：${cardName}`;
     },
     hiddenCard(index) {
-      return `Hidden card ${index + 1}`;
+      return `未翻开卡牌 ${index + 1}`;
+    },
+    attemptCount(count) {
+      return `尝试次数：${count}`;
+    },
+    roundTitle: "当前轮次",
+    totalScoreTitle: "累计积分",
+    roundProgress(current, max) {
+      return `${current}/${max}`;
+    },
+    totalScore(score) {
+      return `积分：${score}`;
+    },
+    roundLabel(index) {
+      return `R${index}`;
     },
   },
   summary: {
@@ -231,7 +253,11 @@ const UI_TEXT = {
       return `${resourceLabel}结余`;
     },
     bestSkill: "最佳技能",
-    taskMarks: "Task Marks",
+    taskMarks: "委托印记",
+    taskMarkLabels: {
+      artifact_refining: "炼器委托",
+      default: "委托",
+    },
   },
   log: {
     title: "最近反馈",

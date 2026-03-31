@@ -168,6 +168,35 @@ function syncTaskProgressForSession(rootState, context) {
   });
 }
 
+function resetTaskStateForWeek(rootState, context) {
+  const createTaskState =
+    typeof context.createTaskState === "function"
+      ? context.createTaskState
+      : typeof window.GAME_RUNTIME.createTaskState === "function"
+      ? window.GAME_RUNTIME.createTaskState
+      : () => ({
+          active: [],
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          completedMarks: [],
+          lastStory: null,
+        });
+  const createTaskRuntimeState =
+    typeof context.createTaskRuntimeState === "function"
+      ? context.createTaskRuntimeState
+      : typeof window.GAME_RUNTIME.createTaskRuntimeState === "function"
+      ? window.GAME_RUNTIME.createTaskRuntimeState
+      : () => ({
+          activeTaskId: null,
+          pendingSlotIndex: null,
+          mode: null,
+          result: null,
+          refining: null,
+        });
+
+  rootState.tasks = createTaskState();
+  rootState.taskRuntime = createTaskRuntimeState();
+}
+
 function getPlanningAssignmentOptions(context) {
   return {
     getActivity: context.getActivity,
@@ -294,6 +323,7 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.summary = null;
       rootState.weekTracker = null;
       rootState.weekActions = [];
+      resetTaskStateForWeek(rootState, context);
       rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.selectedSlot = findNextEditableSlot(rootState.scheduleLocks, 0, 1);

@@ -40,3 +40,21 @@ test("artifact refining task config is exported with task activity metadata", ()
   assert.equal(REFINING_RECIPE_TABLE["lingshi|xuantie|xuantie"], 3);
   assert.equal(REFINING_RECIPE_TABLE["xuantie|xuantie|xuantie"], 1);
 });
+
+test("index loads timed task runtime modules before main app bootstrap", () => {
+  const indexHtml = fs.readFileSync(path.join(TEST_ROOT, "index.html"), "utf8");
+
+  assert.match(indexHtml, /<script src="\.\/src\/domain\/task-system\.js"><\/script>/);
+  assert.match(indexHtml, /<script src="\.\/src\/domain\/refining-minigame\.js"><\/script>/);
+  assert.match(indexHtml, /<script src="\.\/src\/app\/refining-view\.js"><\/script>/);
+  assert.ok(indexHtml.indexOf('./src/domain/task-system.js') < indexHtml.indexOf('./main.js'));
+  assert.ok(indexHtml.indexOf('./src/domain/refining-minigame.js') < indexHtml.indexOf('./main.js'));
+  assert.ok(indexHtml.indexOf('./src/app/refining-view.js') < indexHtml.indexOf('./main.js'));
+});
+
+test("debug refining page loads sandbox scripts and mount node", () => {
+  const debugHtml = fs.readFileSync(path.join(TEST_ROOT, "debug-refining.html"), "utf8");
+
+  assert.match(debugHtml, /<script src="\.\/src\/debug\/refining-sandbox\.js"><\/script>/);
+  assert.match(debugHtml, /id="refining-debug-app"/);
+});

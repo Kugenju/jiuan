@@ -134,37 +134,37 @@ const COPY = {
   },
   taskUnlocked(taskName, expiresOnDay) {
     return {
-      title: "Task Unlocked",
-      body: `${taskName} is now available. Finish it before day ${expiresOnDay}.`,
-      speaker: "Workshop Mentor",
+      title: "委托解锁",
+      body: `「${taskName}」已开放，请在第 ${expiresOnDay} 天前完成。`,
+      speaker: "工坊导师",
     };
   },
   taskExpired(taskName) {
     return {
-      title: "Task Expired",
-      body: `${taskName} expired before you finished it.`,
-      speaker: "Workshop Mentor",
+      title: "委托过期",
+      body: `「${taskName}」已过期限，未能在规定时限内完成。`,
+      speaker: "工坊导师",
     };
   },
   taskAttemptResult(taskName, result = {}) {
-    const objectiveName = result.objectiveName || "artifact";
+    const objectiveName = result.objectiveName || "炼器目标";
     if (result.success) {
       return {
-        title: `${taskName} / Success`,
-        body: `You completed ${objectiveName} with score ${result.score || 0}. The mark is recorded for this week.`,
-        speaker: "Workshop Mentor",
+        title: `${taskName} · 完成`,
+        body: `你完成了${objectiveName}，得分 ${result.score || 0}。本周委托印记已记录。`,
+        speaker: "工坊导师",
       };
     }
 
     const retryText =
       Number(result.remainingDays || 0) > 0
-        ? `${result.remainingDays} day${result.remainingDays === 1 ? "" : "s"} remain for another attempt.`
-        : "There is no time left for another attempt.";
+        ? `还剩 ${result.remainingDays} 天可再次尝试。`
+        : "已无剩余天数可再次尝试。";
 
     return {
-      title: `${taskName} / Failed`,
-      body: `This attempt did not meet ${objectiveName}. Score: ${result.score || 0}. ${retryText}`,
-      speaker: "Workshop Mentor",
+      title: `${taskName} · 未达标`,
+      body: `本次尝试未达到${objectiveName}要求。得分 ${result.score || 0}。${retryText}`,
+      speaker: "工坊导师",
     };
   },
   summary: {

@@ -123,6 +123,62 @@ function getSchedulableTaskActivityIds(rootState) {
   return new Set(activeTasks.filter((task) => task.status === "active").map((task) => task.activityId));
 }
 
+function getActiveTaskForRuntime(rootState) {
+  const runtime = rootState.taskRuntime || {};
+  const activeTasks = rootState.tasks?.active || [];
+  if (runtime.activeTaskId) {
+    const matched = activeTasks.find((task) => task.id === runtime.activeTaskId);
+    if (matched) {
+      return matched;
+    }
+  }
+  if (runtime.mode) {
+    return activeTasks.find((task) => task.activityId === runtime.mode && task.status === "active") || null;
+  }
+  return null;
+}
+
+function applyRefiningTaskRound(rootState, roundResult, context = {}) {
+  ensureTaskState(rootState);
+  const settleRefiningSession = window.GAME_RUNTIME?.settleRefiningSession;
+  const runtime = rootState.taskRuntime && typeof rootState.taskRuntime === "object" ? rootState.taskRuntime : null;
+  if (!runtime || typeof settleRefiningSession !== "function" || !runtime.refining || !context.taskDef) {
+    return {
+      status: "invalid",
+      session: runtime?.refining || null,
+      finalResult: roundResult || null,
+    };
+  }
+
+  const outcome = settleRefiningSession(runtime.refining, roundResult, context.taskDef, context.rng);
+  runtime.refining = outcome.session;
+  runtime.result = roundResult || null;
+
+  if (outcome.status === "continue") {
+    return {
+      status: "continue",
+      session: outcome.session,
+      finalResult: null,
+    };
+  }
+
+  const task = getActiveTaskForRuntime(rootState);
+  if (task) {
+    task.attemptCount = normalizeNumber(task.attemptCount, 0) + 1;
+  }
+
+  return {
+    status: outcome.status,
+    session: outcome.session,
+    finalResult: {
+      ...(roundResult || {}),
+      complete: true,
+      score: outcome.session.totalScore,
+      success: outcome.status === "success",
+    },
+  };
+}
+
 Object.assign(window.GAME_RUNTIME, {
   createTaskState,
   createTaskRuntimeState,
@@ -130,5 +186,6 @@ Object.assign(window.GAME_RUNTIME, {
   handleResolvedCourseTaskProgress,
   expireTimedTasksForDay,
   getSchedulableTaskActivityIds,
+  applyRefiningTaskRound,
 });
 })();

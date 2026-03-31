@@ -131,6 +131,260 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
   assert.equal(calls.pushTimeline, 0);
 });
 
+test("applyActivityToState reports craft course resolution into timed task progression", () => {
+  const calls = {
+    handleResolvedCourseTaskProgress: 0,
+  };
+  const windowObject = loadScripts(["src/domain/activity.js"], {
+    runtime: {
+      applyEffectBundleToRoot: () => {},
+      normalizePlayerState: () => {},
+      triggerStoryBeatForActivity: () => {},
+      getRouteStressPenaltyProfile: () => null,
+      ROUTE_ACTIVITY_MAP: {},
+    },
+  });
+  const { applyActivityToState } = windowObject.GAME_RUNTIME;
+  const rootState = {
+    stats: { fatigue: 0 },
+    skills: {},
+    resources: {},
+    relationships: {},
+    today: {
+      tones: { study: 0, life: 0, body: 0, social: 0 },
+      kinds: { course: 0, assignment: 0, routine: 0 },
+      focus: {},
+      courseSkills: {},
+      courses: [],
+      assignments: [],
+      randomEvents: [],
+      actions: [],
+      latestCourseSkill: null,
+    },
+    tasks: {
+      active: [],
+      weeklyProgress: { craftCompleted: 0, craftTotal: 1 },
+      completedMarks: [],
+      lastStory: null,
+    },
+    dayModifier: null,
+    weekActions: [],
+    scheduleLocks: [true],
+  };
+
+  applyActivityToState(
+    rootState,
+    {
+      id: "artifact_intelligence",
+      name: "本命法宝智能系统",
+      kind: "course",
+      tone: "study",
+      skill: "craft",
+      effects: {},
+      notes: {},
+    },
+    0,
+    {
+      slotNames: ["morning"],
+      copy: {},
+      storyBeats: [],
+      skillLabels: { craft: "Craft" },
+      getMainFocusSkill: () => "craft",
+      addLog: () => {},
+      taskDefs: {
+        artifact_refining: {
+          id: "artifact_refining",
+          activityId: "artifact_refining_task",
+          durationDays: 3,
+        },
+      },
+      handleResolvedCourseTaskProgress: (state, activity, context) => {
+        calls.handleResolvedCourseTaskProgress += 1;
+        state.tasks.weeklyProgress.craftCompleted += 1;
+        state.tasks.active.push({
+          id: "week-1-artifact_refining",
+          type: "artifact_refining",
+          activityId: context.taskDefs.artifact_refining.activityId,
+          status: "active",
+        });
+      },
+    }
+  );
+
+  assert.equal(calls.handleResolvedCourseTaskProgress, 1);
+  assert.equal(rootState.tasks.weeklyProgress.craftCompleted, 1);
+  assert.equal(rootState.tasks.active[0].activityId, "artifact_refining_task");
+});
+
+test("resolveSlotForFlowState shows unlock story after the final craft course unlocks a task", () => {
+  const runtime = {
+    findDayModifier: () => null,
+    applyActivityToState: (rootState) => {
+      rootState.tasks = {
+        active: [
+          {
+            id: "week-1-artifact_refining",
+            type: "artifact_refining",
+            activityId: "artifact_refining_task",
+            status: "active",
+          },
+        ],
+        weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
+        completedMarks: [],
+        lastStory: {
+          title: "unlock",
+          body: "refining task unlocked",
+          speaker: "mentor",
+        },
+      };
+      return "course notes";
+    },
+    getActivitySpeaker: () => "course",
+    triggerRandomEventForTiming: () => null,
+  };
+  const windowObject = loadScripts(["src/app/day-flow.js"], { runtime });
+  const { resolveSlotForFlowState } = windowObject.GAME_RUNTIME;
+  const rootState = {
+    mode: "resolving",
+    day: 3,
+    week: 1,
+    schedule: ["artifact_intelligence"],
+    progress: 0,
+    resolvingIndex: 0,
+    currentStory: null,
+    taskRuntime: {
+      activeTaskId: null,
+      pendingSlotIndex: null,
+      mode: null,
+      result: null,
+      refining: null,
+    },
+    resolvingFlow: {
+      storyTrail: [],
+      justAppended: false,
+    },
+    tasks: {
+      active: [],
+      weeklyProgress: { craftCompleted: 0, craftTotal: 1 },
+      completedMarks: [],
+      lastStory: null,
+    },
+  };
+
+  resolveSlotForFlowState(rootState, 0, {
+    slotNames: ["morning"],
+    uiText: {
+      speakers: {
+        schedule: "schedule",
+      },
+    },
+    copy: {
+      dayFlowResult: () => ({
+        title: "result",
+        body: "result body",
+      }),
+    },
+    storyBeats: [],
+    skillLabels: {},
+    getMainFocusSkill: () => "craft",
+    addLog: () => {},
+    pushTimeline: () => {},
+    randomEvents: [],
+    getActivity: () => ({
+      id: "artifact_intelligence",
+      kind: "course",
+      name: "Artifact Intelligence",
+      storySegments: [],
+    }),
+    fallbackActivityId: "homework",
+  });
+
+  assert.equal(rootState.tasks.active.length, 1);
+  assert.equal(rootState.currentStory.title, "unlock");
+  assert.deepEqual(realmSafe(rootState.resolvingFlow.storyTrail), [
+    { title: "result", body: "result body", speaker: "course" },
+    { title: "unlock", body: "refining task unlocked", speaker: "mentor" },
+  ]);
+});
+
+test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advances normally", () => {
+  const windowObject = loadScripts(["src/app/day-flow.js"]);
+  const { resumeResolvingAfterTaskAttempt, advanceResolvingFlowState } = windowObject.GAME_RUNTIME;
+  const rootState = {
+    mode: "task",
+    scene: "workshop",
+    progress: 0,
+    resolvingIndex: 0,
+    currentStory: null,
+    taskRuntime: {
+      activeTaskId: "week-1-artifact_refining",
+      pendingSlotIndex: 0,
+      mode: "artifact_refining_task",
+      result: { success: true, score: 3 },
+      refining: {
+        deck: [],
+        slots: ["card-1", "card-2", "card-3"],
+      },
+    },
+    resolvingFlow: {
+      phase: "result",
+      slotIndex: 0,
+      segmentIndex: 0,
+      autoplay: true,
+      autoplayDelay: 1.05,
+      autoplayTimer: 0.5,
+      storyTrail: [],
+      justAppended: false,
+    },
+  };
+  const detail = {
+    title: "task result",
+    body: "finished the refining check",
+    speaker: "mentor",
+  };
+
+  resumeResolvingAfterTaskAttempt(rootState, detail, {
+    slotNames: ["morning", "noon", "night"],
+  });
+
+  assert.equal(rootState.mode, "resolving");
+  assert.equal(rootState.scene, "resolving");
+  assert.equal(rootState.progress, 1 / 3);
+  assert.equal(rootState.resolvingIndex, 1);
+  assert.equal(rootState.resolvingFlow.phase, "result");
+  assert.equal(rootState.resolvingFlow.autoplay, false);
+  assert.equal(rootState.resolvingFlow.autoplayTimer, 0);
+  assert.deepEqual(realmSafe(rootState.taskRuntime), {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+  });
+  assert.deepEqual(realmSafe(rootState.resolvingFlow.storyTrail), [detail]);
+  assert.equal(rootState.currentStory.title, "task result");
+
+  const advanced = advanceResolvingFlowState(rootState, {
+    slotNames: ["morning", "noon", "night"],
+    copy: {
+      dayFlowOutroTitle: (slotName) => `${slotName} outro`,
+      dayFlowOutro: (slotName) => `${slotName} continues`,
+      dayEndLog: { title: "day end", body: "done" },
+    },
+    uiText: {
+      speakers: {
+        schedule: "schedule",
+      },
+    },
+    addLog: () => {},
+    enterMemoryPhase: () => {},
+  });
+
+  assert.equal(advanced.transitioned, true);
+  assert.equal(rootState.resolvingFlow.phase, "outro");
+  assert.equal(rootState.currentStory.title, "morning outro");
+});
+
 test("finishNightFlow expires timed tasks before advancing to the next planning day", () => {
   const calls = {
     expireTimedTasksForDay: [],
@@ -262,6 +516,128 @@ test("dispatchSessionCommand keeps the assignability hook active for task activi
   assert.equal(ok, false);
   assert.equal(rootState.schedule[0], null);
   assert.equal(rootState.selectedActivity, "homework");
+});
+
+test("dispatchSessionCommand resets weekly task state when continuing to the next week", () => {
+  const runtime = {
+    createBasePlayerState: () => ({
+      resources: {},
+      stats: {},
+      skills: {},
+      relationships: {},
+    }),
+    resetPlayerStateOnRoot: () => {},
+    applyArchetypeEffectToRoot: () => {},
+    createEmptySchedule: () => [null, null],
+    createEmptyWeeklyTimetable: () => [[null, null]],
+    createEmptyScheduleLocks: () => [false, false],
+    cloneCourseSelectionBlocks: () => [],
+    buildWeeklyTimetableFromCourseSelection: () => [[null, null]],
+    isCourseSelectionComplete: () => true,
+    pickCourseForBlock: () => true,
+    buildDailyScheduleFromWeeklyTimetable: () => [null, null],
+    buildScheduleLocksFromWeeklyTimetable: () => [false, false],
+    findSchedulePreset: () => null,
+    findNextEditableSlot: () => 0,
+    setSelectedPlanningSlot: () => true,
+    clearPlanningSchedule: () => true,
+    createTaskState: () => ({
+      active: [],
+      weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+      completedMarks: [],
+      lastStory: null,
+    }),
+    createTaskRuntimeState: () => ({
+      activeTaskId: null,
+      pendingSlotIndex: null,
+      mode: null,
+      result: null,
+      refining: null,
+    }),
+  };
+  const windowObject = loadScripts(["src/app/session.js"], { runtime });
+  const { dispatchSessionCommand } = windowObject.GAME_RUNTIME;
+  const rootState = {
+    mode: "summary",
+    scene: "summary",
+    day: 7,
+    week: 1,
+    totalWeeks: 4,
+    summary: { canContinue: true },
+    weekTracker: { week: 1, totalWeeks: 4, canContinue: true },
+    progress: 1,
+    resolvingIndex: 6,
+    phaseTimer: 1,
+    resolvingFlow: {
+      phase: "ending",
+      slotIndex: 5,
+      segmentIndex: 2,
+      autoplay: true,
+      autoplayDelay: 1.05,
+      autoplayTimer: 0.7,
+      storyTrail: [{ title: "old" }],
+      justAppended: true,
+    },
+    dayModifier: { id: "busy" },
+    weeklyTimetable: [[null, null]],
+    schedule: ["artifact_refining_task", null],
+    scheduleLocks: [false, false],
+    selectedSlot: 0,
+    selectedActivity: "artifact_refining_task",
+    currentStory: { title: "summary", body: "body", speaker: "system" },
+    memory: {
+      pieces: [{ id: "piece-1" }],
+      selectedPiece: "piece-1",
+      dragPieceId: "piece-1",
+      placementsToday: [{ id: "placement-1" }],
+      cursor: { kind: "node", id: 7 },
+      lastSummary: "old summary",
+    },
+    tasks: {
+      active: [{ id: "week-1-artifact_refining", status: "active" }],
+      weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
+      completedMarks: ["artifact_refining"],
+      lastStory: { title: "task", body: "done", speaker: "mentor" },
+    },
+    taskRuntime: {
+      activeTaskId: "week-1-artifact_refining",
+      pendingSlotIndex: 0,
+      mode: "artifact_refining_task",
+      result: { success: true, score: 3 },
+      refining: { slots: ["card-0", "card-1", "card-2"] },
+    },
+    weekActions: ["task"],
+  };
+  const context = {
+    slotCount: 2,
+    initialActivityId: "homework",
+    memoryCenterNodeId: 0,
+    copy: {
+      memoryPendingSummary: "pending",
+      weekStartStory: (week) => ({ title: `week ${week}`, body: "start", speaker: "system" }),
+    },
+    sessionOptions: {},
+    getActivity: () => ({ kind: "routine" }),
+  };
+
+  const ok = dispatchSessionCommand(rootState, { type: "run/continue-week" }, context);
+
+  assert.equal(ok, true);
+  assert.equal(rootState.week, 2);
+  assert.equal(rootState.day, 1);
+  assert.deepEqual(realmSafe(rootState.tasks), {
+    active: [],
+    weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+    completedMarks: [],
+    lastStory: null,
+  });
+  assert.deepEqual(realmSafe(rootState.taskRuntime), {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+  });
 });
 
 test("finishWeekState carries completed task marks into the weekly summary payload", () => {
@@ -424,4 +800,68 @@ test("buildTextStateExport snapshots task system state for debugging", () => {
 
   assert.deepEqual(realmSafe(exported.tasks.completedMarks), ["artifact_refining"]);
   assert.deepEqual(realmSafe(exported.task_runtime.refining.slots), ["card-0", null, null]);
+});
+
+test("applyRefiningTaskRound keeps task runtime active when cumulative score is still below target", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js", "src/domain/task-system.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningSessionState, applyRefiningTaskRound } = windowObject.GAME_RUNTIME;
+
+  const rootState = {
+    tasks: {
+      active: [{ id: "week-1-artifact_refining", type: "artifact_refining", activityId: "artifact_refining_task", status: "active", attemptCount: 0 }],
+    },
+    taskRuntime: {
+      activeTaskId: "week-1-artifact_refining",
+      pendingSlotIndex: 0,
+      mode: "artifact_refining_task",
+      result: null,
+      refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+    },
+  };
+
+  const outcome = applyRefiningTaskRound(
+    rootState,
+    { score: 1, success: false, complete: true, recipeKey: "xuantie|xuantie|xuantie" },
+    { taskDef: TASK_DEFS.artifact_refining, rng: () => 0.5 }
+  );
+
+  assert.equal(outcome.status, "continue");
+  assert.equal(rootState.taskRuntime.activeTaskId, "week-1-artifact_refining");
+  assert.equal(rootState.taskRuntime.refining.roundIndex, 2);
+  assert.equal(rootState.taskRuntime.refining.totalScore, 1);
+  assert.equal(rootState.tasks.active[0].attemptCount, 0);
+});
+
+test("applyRefiningTaskRound returns cumulative terminal result on success", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js", "src/domain/task-system.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningSessionState, applyRefiningTaskRound } = windowObject.GAME_RUNTIME;
+
+  const rootState = {
+    tasks: {
+      active: [{ id: "week-1-artifact_refining", type: "artifact_refining", activityId: "artifact_refining_task", status: "active", attemptCount: 0 }],
+    },
+    taskRuntime: {
+      activeTaskId: "week-1-artifact_refining",
+      pendingSlotIndex: 0,
+      mode: "artifact_refining_task",
+      result: null,
+      refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+    },
+  };
+  rootState.taskRuntime.refining.totalScore = 2;
+  rootState.taskRuntime.refining.roundIndex = 2;
+
+  const outcome = applyRefiningTaskRound(
+    rootState,
+    { score: 1, success: false, complete: true, recipeKey: "lingshi|xuantie|xuantie" },
+    { taskDef: TASK_DEFS.artifact_refining, rng: () => 0.5 }
+  );
+
+  assert.equal(outcome.status, "success");
+  assert.equal(outcome.finalResult.score, 3);
+  assert.equal(outcome.finalResult.success, true);
+  assert.equal(rootState.taskRuntime.refining.totalScore, 3);
+  assert.equal(rootState.tasks.active[0].attemptCount, 1);
 });
