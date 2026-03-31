@@ -9,6 +9,7 @@ const statusLine = document.querySelector("#status-line");
 const statsToggleBtn = document.querySelector("#stats-toggle-btn");
 const progressToggleBtn = document.querySelector("#progress-toggle-btn");
 const feedbackToggleBtn = document.querySelector("#feedback-toggle-btn");
+const timetableToggleBtn = document.querySelector("#timetable-toggle-btn");
 const overlayBackdrop = document.querySelector("#overlay-backdrop");
 const memoryStage = document.querySelector("#memory-stage");
 const infoModal = document.querySelector("#info-modal");
@@ -1965,8 +1966,10 @@ function renderInfoModal() {
   const kind = state.ui.infoModal;
   if (!kind) {
     infoModal.innerHTML = "";
+    infoModal.classList.remove("overlay-modal-timetable");
     return;
   }
+  infoModal.classList.remove("overlay-modal-timetable");
   if (kind === "memory-rules") {
     infoModal.innerHTML = `
       <div class="panel-title">
@@ -2007,6 +2010,16 @@ function renderInfoModal() {
     infoModal.querySelector("#info-close-btn").addEventListener("click", closeInfoModal);
     return;
   }
+  if (kind === "weekly-timetable") {
+    infoModal.classList.add("overlay-modal-timetable");
+    infoModal.innerHTML = window.GAME_RUNTIME.renderWeeklyTimetableModalHtml({
+      title: UI_TEXT.infoModal.timetableTitle,
+      closeLabel: UI_TEXT.common.close,
+      timetableHtml: renderWeeklyTimetable(),
+    });
+    infoModal.querySelector("#info-close-btn").addEventListener("click", closeInfoModal);
+    return;
+  }
   if (kind === "feedback") {
     infoModal.innerHTML = `
       <div class="panel-title">
@@ -2033,6 +2046,9 @@ function syncUi() {
   statsToggleBtn.textContent = state.ui.statsOpen ? UI_TEXT.toolbar.statsClose : UI_TEXT.toolbar.statsOpen;
   progressToggleBtn.textContent = UI_TEXT.toolbar.progress;
   feedbackToggleBtn.textContent = UI_TEXT.toolbar.feedback;
+  if (timetableToggleBtn) {
+    timetableToggleBtn.textContent = UI_TEXT.toolbar.timetable;
+  }
   document.body.classList.toggle("memory-mode", state.mode === "memory");
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
@@ -3302,6 +3318,13 @@ feedbackToggleBtn.addEventListener("click", () => {
     return;
   }
   openInfoModal("feedback");
+});
+timetableToggleBtn?.addEventListener("click", () => {
+  if (state.ui.infoModal === "weekly-timetable") {
+    closeInfoModal();
+    return;
+  }
+  openInfoModal("weekly-timetable");
 });
 overlayBackdrop.addEventListener("click", () => {
   toggleStatsPanel(false);

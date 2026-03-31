@@ -37,7 +37,9 @@ test("renderWeeklyTimetableModalHtml wraps read-only timetable content in modal 
   });
 
   assert.match(html, /本周完整课表/);
+  assert.match(html, /overlay-modal-timetable/);
   assert.match(html, /weekly-timetable-modal/);
+  assert.match(html, /weekly-timetable-modal-body/);
   assert.match(html, /id="info-close-btn"/);
   assert.match(html, /weekly-timetable-shell/);
 });

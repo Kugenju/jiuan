@@ -1629,6 +1629,10 @@ button {
   z-index: 22;
 }
 
+.overlay-modal.overlay-modal-timetable {
+  width: min(920px, calc(100vw - 24px));
+}
+
 .overlay-drawer.hidden,
 .overlay-modal.hidden,
 .overlay-backdrop.hidden {
@@ -1638,6 +1642,14 @@ button {
 .modal-body {
   display: grid;
   gap: 12px;
+}
+
+.weekly-timetable-modal-body {
+  overflow: auto;
+}
+
+.weekly-timetable-modal .weekly-timetable-shell {
+  min-width: 720px;
 }
 
 .modal-grid {
