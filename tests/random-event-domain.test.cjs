@@ -1,4 +1,4 @@
-﻿const test = require("node:test");
+const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -234,4 +234,188 @@ test("resolveRandomEventChoice supports custom effects and dynamic skill bonus t
   assert.equal(rootState.skills.dao, 1);
   assert.equal(result.notesText.includes("道法 额外 +1"), true);
   assert.equal(result.notesText.includes("奖励：记忆+1"), true);
+});
+
+test("resolveRandomEventChoice guards skill bonus lookups and label fallback", () => {
+  const windowObject = loadScripts(["src/domain/player.js", "src/domain/random-event.js"]);
+  const { resolveRandomEventChoice } = windowObject.GAME_RUNTIME;
+  const rootState = createRootState();
+  rootState.skills = {};
+  rootState.today.latestCourseSkill = "sigil";
+  const activity = { id: "homework", kind: "assignment", name: "Homework" };
+  const event = {
+    id: "assignment_breakthrough",
+    title: "题解顿悟",
+    timing: "after",
+    chance: 1,
+    oncePerDay: false,
+    condition: { activityKinds: ["assignment"] },
+    prompt: {
+      speakerKey: "assignment",
+      title: "随机事件 · 题解顿悟",
+      body: "你忽然意识到答案拼起来了。",
+    },
+    choices: [
+      {
+        id: "push",
+        label: "顺势推演",
+        effect: { stats: { memory: 1 } },
+        effectSummary: "记忆+1",
+        skillBonus: {
+          source: "latestCourseSkill",
+          fallbackSource: "mainFocusSkill",
+          amount: 1,
+          noteTemplate: "一道关键题突然想通，{skill} 额外 +{amount}。",
+          fallbackNote: "虽然没有锁定具体学科，但这次顿悟依然把记忆再推高了一截。",
+        },
+      },
+    ],
+  };
+  const pendingEvent = {
+    id: event.id,
+    title: event.prompt.title,
+    body: event.prompt.body,
+    speaker: "assignment",
+    slotIndex: 2,
+    activityId: activity.id,
+    choices: event.choices.map((choice) => ({ id: choice.id, label: choice.label })),
+    sourceEvent: event,
+  };
+  const context = {
+    randomEvents: [event],
+    uiText: {
+      speakers: {
+        course: "course",
+        assignment: "assignment",
+        routine: "routine",
+      },
+    },
+    skillLabels: {},
+    getMainFocusSkill: () => "dao",
+    addLog: () => {},
+  };
+
+  const result = resolveRandomEventChoice(rootState, pendingEvent, "push", activity, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(rootState.skills.sigil, 1);
+  assert.equal(result.notesText.includes("sigil 额外 +1"), true);
+});
+
+test("resolveRandomEventChoice guards missing getMainFocusSkill callback", () => {
+  const windowObject = loadScripts(["src/domain/player.js", "src/domain/random-event.js"]);
+  const { resolveRandomEventChoice } = windowObject.GAME_RUNTIME;
+  const rootState = createRootState();
+  rootState.today.latestCourseSkill = null;
+  const activity = { id: "homework", kind: "assignment", name: "Homework" };
+  const event = {
+    id: "assignment_breakthrough",
+    title: "题解顿悟",
+    timing: "after",
+    chance: 1,
+    oncePerDay: false,
+    condition: { activityKinds: ["assignment"] },
+    prompt: {
+      speakerKey: "assignment",
+      title: "随机事件 · 题解顿悟",
+      body: "你忽然意识到答案拼起来了。",
+    },
+    choices: [
+      {
+        id: "push",
+        label: "顺势推演",
+        effect: { stats: { memory: 1 } },
+        effectSummary: "记忆+1",
+        skillBonus: {
+          source: "mainFocusSkill",
+          fallbackSource: "activitySkill",
+          amount: 1,
+          noteTemplate: "一道关键题突然想通，{skill} 额外 +{amount}。",
+          fallbackNote: "虽然没有锁定具体学科，但这次顿悟依然把记忆再推高了一截。",
+        },
+      },
+    ],
+  };
+  const pendingEvent = {
+    id: event.id,
+    title: event.prompt.title,
+    body: event.prompt.body,
+    speaker: "assignment",
+    slotIndex: 2,
+    activityId: activity.id,
+    choices: event.choices.map((choice) => ({ id: choice.id, label: choice.label })),
+    sourceEvent: event,
+  };
+  const context = {
+    randomEvents: [event],
+    uiText: {
+      speakers: {
+        course: "course",
+        assignment: "assignment",
+        routine: "routine",
+      },
+    },
+    skillLabels: { dao: "道法" },
+    addLog: () => {},
+  };
+
+  const result = resolveRandomEventChoice(rootState, pendingEvent, "push", activity, context);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.notesText.includes("虽然没有锁定具体学科"), true);
+});
+
+test("resolveRandomEventChoice returns unknown_reward_template without mutating state", () => {
+  const windowObject = loadScripts(["src/domain/player.js", "src/domain/random-event.js"]);
+  const { resolveRandomEventChoice } = windowObject.GAME_RUNTIME;
+  const rootState = createRootState();
+  const snapshot = realmSafe(rootState);
+  const activity = { id: "homework", kind: "assignment", name: "Homework" };
+  const event = {
+    id: "assignment_breakthrough",
+    title: "题解顿悟",
+    timing: "after",
+    chance: 1,
+    oncePerDay: false,
+    condition: { activityKinds: ["assignment"] },
+    prompt: {
+      speakerKey: "assignment",
+      title: "随机事件 · 题解顿悟",
+      body: "你忽然意识到答案拼起来了。",
+    },
+    choices: [
+      {
+        id: "push",
+        label: "顺势推演",
+        rewardTemplate: "unknown_reward",
+      },
+    ],
+  };
+  const pendingEvent = {
+    id: event.id,
+    title: event.prompt.title,
+    body: event.prompt.body,
+    speaker: "assignment",
+    slotIndex: 2,
+    activityId: activity.id,
+    choices: event.choices.map((choice) => ({ id: choice.id, label: choice.label })),
+    sourceEvent: event,
+  };
+  const context = {
+    randomEvents: [event],
+    uiText: {
+      speakers: {
+        course: "course",
+        assignment: "assignment",
+        routine: "routine",
+      },
+    },
+    skillLabels: {},
+    addLog: () => {},
+  };
+
+  const result = resolveRandomEventChoice(rootState, pendingEvent, "push", activity, context);
+
+  assert.deepEqual(realmSafe(result), { ok: false, error: "unknown_reward_template" });
+  assert.deepEqual(realmSafe(rootState), snapshot);
 });

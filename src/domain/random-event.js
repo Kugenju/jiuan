@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 const {
@@ -37,7 +37,7 @@ function resolveRandomEventSkill(rootState, activity, bonus, context) {
     return rootState.today.latestCourseSkill;
   }
   if (bonus.source === "mainFocusSkill") {
-    const focus = context.getMainFocusSkill();
+    const focus = typeof context.getMainFocusSkill === "function" ? context.getMainFocusSkill() : null;
     if (focus) {
       return focus;
     }
@@ -50,7 +50,7 @@ function resolveRandomEventSkill(rootState, activity, bonus, context) {
     return rootState.today.latestCourseSkill;
   }
   if (bonus.fallbackSource === "mainFocusSkill") {
-    return context.getMainFocusSkill();
+    return typeof context.getMainFocusSkill === "function" ? context.getMainFocusSkill() : null;
   }
 
   return null;
@@ -180,10 +180,11 @@ function resolveRandomEventChoice(rootState, pendingEvent, choiceId, activity, c
   if (choice.skillBonus) {
     const skill = resolveRandomEventSkill(rootState, activity, choice.skillBonus, context);
     if (skill) {
-      rootState.skills[skill] += choice.skillBonus.amount;
+      rootState.skills[skill] = (rootState.skills[skill] || 0) + choice.skillBonus.amount;
+      const skillLabel = context.skillLabels?.[skill] || skill;
       notes.push(
         choice.skillBonus.noteTemplate
-          .replace("{skill}", context.skillLabels[skill])
+          .replace("{skill}", skillLabel)
           .replace("{amount}", String(choice.skillBonus.amount))
       );
     } else if (choice.skillBonus.fallbackNote) {

@@ -1,4 +1,4 @@
-﻿window.GAME_DATA = window.GAME_DATA || {};
+window.GAME_DATA = window.GAME_DATA || {};
 
 const RANDOM_EVENTS = [
   {
