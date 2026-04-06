@@ -25,6 +25,28 @@ const {
   clearPlanningSchedule,
 } = window.GAME_RUNTIME;
 
+const defaultCreateRandomEventRuntimeState = () => ({
+  stage: "idle",
+  pendingEvent: null,
+  focusedChoiceIndex: 0,
+  selectedChoiceId: null,
+  resultText: null,
+  rewardSummary: null,
+  resolution: null,
+  continuation: null,
+});
+
+function resolveCreateRandomEventRuntimeState(source) {
+  if (typeof source?.createRandomEventRuntimeState === "function") {
+    return source.createRandomEventRuntimeState;
+  }
+  if (typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function") {
+    return window.GAME_RUNTIME.createRandomEventRuntimeState;
+  }
+  window.GAME_RUNTIME.createRandomEventRuntimeState = defaultCreateRandomEventRuntimeState;
+  return defaultCreateRandomEventRuntimeState;
+}
+
 function normalizeTotalWeeks(value) {
   const parsed = typeof value === "string" ? Number(value.trim()) : Number(value);
   const normalized = Math.floor(parsed);
@@ -81,21 +103,7 @@ function createGameState(options) {
           result: null,
           refining: null,
         });
-  const createRandomEventRuntimeState =
-    typeof options.createRandomEventRuntimeState === "function"
-      ? options.createRandomEventRuntimeState
-      : typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function"
-      ? window.GAME_RUNTIME.createRandomEventRuntimeState
-      : () => ({
-          stage: "idle",
-          pendingEvent: null,
-          focusedChoiceIndex: 0,
-          selectedChoiceId: null,
-          resultText: null,
-          rewardSummary: null,
-          resolution: null,
-          continuation: null,
-        });
+  const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(options);
 
   return {
     mode: "menu",
@@ -208,21 +216,7 @@ function resetTaskStateForWeek(rootState, context) {
           result: null,
           refining: null,
         });
-  const createRandomEventRuntimeState =
-    typeof context.createRandomEventRuntimeState === "function"
-      ? context.createRandomEventRuntimeState
-      : typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function"
-      ? window.GAME_RUNTIME.createRandomEventRuntimeState
-      : () => ({
-          stage: "idle",
-          pendingEvent: null,
-          focusedChoiceIndex: 0,
-          selectedChoiceId: null,
-          resultText: null,
-          rewardSummary: null,
-          resolution: null,
-          continuation: null,
-        });
+  const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(context);
 
   rootState.tasks = createTaskState();
   rootState.taskRuntime = createTaskRuntimeState();

@@ -1708,6 +1708,17 @@ button {
   line-height: 1.55;
 }
 
+.random-event-modal {
+  display: grid;
+  gap: 12px;
+}
+
+.random-event-choice {
+  border: 1px solid var(--line-soft);
+  background: var(--paper-panel);
+  color: var(--ink-strong);
+}
+
 .drawer-close {
   border: 1px solid rgba(199, 164, 90, 0.45);
   background: rgba(199, 164, 90, 0.12);

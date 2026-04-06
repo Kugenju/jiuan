@@ -276,12 +276,12 @@ const UI_TEXT = {
     },
   },
   randomEvent: {
-    badge: "Random Event",
-    promptLabel: "Event Prompt",
-    resultLabel: "Event Result",
-    chooseHint: "Choose one.",
-    continueBtn: "Continue",
-    rewardPrefix: "Rewards:",
+    badge: "随机事件",
+    promptLabel: "事件抉择",
+    resultLabel: "事件结果",
+    chooseHint: "请选择一项。",
+    continueBtn: "继续",
+    rewardPrefix: "奖励：",
   },
   top: {
     title: "角色状态",

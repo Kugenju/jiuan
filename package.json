@@ -5,7 +5,7 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "npm run desktop:dev",
-    "test": "echo \"No automated test configured\"",
+    "test": "node --test",
     "encoding:check": "node scripts/encoding-guard.cjs",
     "encoding:fix": "node scripts/encoding-guard.cjs --fix",
     "desktop:dev": "electron .",
