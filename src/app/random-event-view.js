@@ -1,0 +1,93 @@
+(() => {
+window.GAME_RUNTIME = window.GAME_RUNTIME || {};
+
+function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
+  const stage = runtime?.stage || "idle";
+  if (!stage || stage === "idle") {
+    return "";
+  }
+
+  const randomEventText = uiText.randomEvent || {};
+  const pendingEvent = runtime?.pendingEvent || {};
+  const title = pendingEvent.title || "";
+  const body = pendingEvent.body || "";
+  const badge = randomEventText.badge || "";
+  const promptLabel = randomEventText.promptLabel || "";
+  const resultLabel = randomEventText.resultLabel || "";
+  const chooseHint = randomEventText.chooseHint || "";
+  const continueBtn = randomEventText.continueBtn || "";
+  const rewardPrefix = randomEventText.rewardPrefix || "";
+
+  if (stage === "prompt") {
+    const choices = Array.isArray(pendingEvent.choices) ? pendingEvent.choices : [];
+    const choiceButtons = choices
+      .map(
+        (choice, index) => `
+          <button
+            class="choice-card ${index === runtime.focusedChoiceIndex ? "active" : ""}"
+            data-random-event-choice="${choice.id}"
+            type="button"
+          >
+            <strong>${choice.label || ""}</strong>
+          </button>
+        `
+      )
+      .join("");
+
+    return `
+      <div class="random-event-modal">
+        <div class="panel-title">
+          <h2>${promptLabel || title}</h2>
+          <span class="badge">${badge}</span>
+        </div>
+        <div class="story-card">
+          <strong>${title}</strong>
+          <small>${body}</small>
+        </div>
+        <div class="story-card">
+          <small>${chooseHint}</small>
+        </div>
+        <div class="choice-grid">
+          ${choiceButtons}
+        </div>
+      </div>
+    `;
+  }
+
+  if (stage === "result") {
+    const resultText = runtime.resultText || "";
+    const rewardSummary = runtime.rewardSummary || "";
+    const rewardBlock = rewardSummary
+      ? `
+        <div class="story-card">
+          <strong>${rewardPrefix}</strong>
+          <small>${rewardSummary}</small>
+        </div>
+      `
+      : "";
+
+    return `
+      <div class="random-event-modal">
+        <div class="panel-title">
+          <h2>${resultLabel || title}</h2>
+          <span class="badge">${badge}</span>
+        </div>
+        <div class="story-card">
+          <strong>${title}</strong>
+          <small>${resultText || body}</small>
+        </div>
+        ${rewardBlock}
+        <div class="action-row">
+          <button class="primary" id="random-event-continue-btn" type="button">${continueBtn}</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return "";
+}
+
+Object.assign(window.GAME_RUNTIME, {
+  renderRandomEventModalHtml,
+});
+})();

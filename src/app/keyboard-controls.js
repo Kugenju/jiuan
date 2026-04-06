@@ -4,12 +4,35 @@ window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 function createKeyboardHandler(context) {
   return (event) => {
     const key = event.key.toLowerCase();
+    const randomEventStage = context.state?.randomEventRuntime?.stage;
+    const randomEventActive = randomEventStage && randomEventStage !== "idle";
     if (
       ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) ||
       event.key === " " ||
       (context.state.mode === "planning" && /^[1-9]$/.test(event.key))
     ) {
       event.preventDefault();
+    }
+
+    if (randomEventActive) {
+      if (key === "arrowleft" || key === "arrowup") {
+        if (typeof context.focusRandomEventChoice === "function") {
+          context.focusRandomEventChoice(-1);
+        }
+        return;
+      }
+      if (key === "arrowright" || key === "arrowdown") {
+        if (typeof context.focusRandomEventChoice === "function") {
+          context.focusRandomEventChoice(1);
+        }
+        return;
+      }
+      if (key === " " || key === "enter") {
+        if (typeof context.activateRandomEventChoice === "function") {
+          context.activateRandomEventChoice();
+        }
+        return;
+      }
     }
 
     if (key === "i") {
