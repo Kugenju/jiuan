@@ -72,8 +72,16 @@ function renderRandomEventModalHtml(input = {}) {
   }
 
   if (stage === "result") {
-    const resultText = escapeHtml(runtime.resultText || "");
-    const rewardSummary = escapeHtml(runtime.rewardSummary || "");
+    const rawResultText = String(runtime.resultText || "");
+    const rawRewardSummary = String(runtime.rewardSummary || "");
+    const rewardPrefixRaw = String(randomEventText.rewardPrefix || "");
+    let cleanedResultText = rawResultText;
+    if (rawRewardSummary && rewardPrefixRaw) {
+      cleanedResultText = cleanedResultText.replace(`${rewardPrefixRaw}${rawRewardSummary}`, "");
+    }
+    cleanedResultText = cleanedResultText.replace(/\s+/g, " ").trim();
+    const resultText = cleanedResultText ? escapeHtml(cleanedResultText) : body;
+    const rewardSummary = escapeHtml(rawRewardSummary || "");
     const rewardBlock = rewardSummary
       ? `
         <div class="story-card">

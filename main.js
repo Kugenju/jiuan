@@ -2197,6 +2197,10 @@ function syncUi() {
   renderLogPanel();
   renderMemoryStage();
   const randomEventOpen = renderRandomEventModal();
+  if (randomEventOpen) {
+    state.ui.statsOpen = false;
+    state.ui.infoModal = null;
+  }
   if (!randomEventOpen) {
     renderInfoModal();
   }

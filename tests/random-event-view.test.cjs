@@ -101,6 +101,30 @@ test("renderRandomEventModalHtml result shows reward summary and continue button
   assert.match(html, /继续/);
 });
 
+test("renderRandomEventModalHtml result keeps reward summary out of main body", () => {
+  const windowObject = loadScripts(["src/app/random-event-view.js"]);
+  const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
+  const rewardLine = `${UI_TEXT.randomEvent.rewardPrefix}Insight +1`;
+  const runtime = {
+    stage: "result",
+    focusedChoiceIndex: 0,
+    pendingEvent: {
+      title: "A note",
+      body: "You find a note.",
+      choices: [
+        { id: "accept", label: "Accept" },
+      ],
+    },
+    resultText: `You accept. ${rewardLine}`,
+    rewardSummary: "Insight +1",
+  };
+
+  const html = renderRandomEventModalHtml({ runtime, uiText: UI_TEXT });
+  const matches = html.match(/Insight \+1/g) || [];
+
+  assert.equal(matches.length, 1);
+});
+
 test("renderRandomEventModalHtml returns empty string for idle stage", () => {
   const windowObject = loadScripts(["src/app/random-event-view.js"]);
   const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
