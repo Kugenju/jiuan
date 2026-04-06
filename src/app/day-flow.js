@@ -21,18 +21,19 @@ function createResolvingFlowState() {
   };
 }
 
-function createRandomEventRuntimeState() {
-  return {
-    stage: "idle",
-    pendingEvent: null,
-    focusedChoiceIndex: 0,
-    selectedChoiceId: null,
-    resultText: null,
-    rewardSummary: null,
-    resolution: null,
-    continuation: null,
-  };
-}
+const createRandomEventRuntimeState =
+  typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function"
+    ? window.GAME_RUNTIME.createRandomEventRuntimeState
+    : () => ({
+        stage: "idle",
+        pendingEvent: null,
+        focusedChoiceIndex: 0,
+        selectedChoiceId: null,
+        resultText: null,
+        rewardSummary: null,
+        resolution: null,
+        continuation: null,
+      });
 
 function getRandomEventRuntimeState(rootState) {
   if (!rootState.randomEventRuntime || typeof rootState.randomEventRuntime !== "object") {
@@ -155,11 +156,14 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
   });
 
   const randomEventChoices = Array.isArray(randomEvent?.choices) ? randomEvent.choices : [];
+  let skippedRandomEvent = false;
   if (randomEvent && randomEventChoices.length > 0) {
     const opened = openRandomEventPromptForFlowState(rootState, randomEvent, {
       slotIndex,
       activityNotes,
-      activity,
+      activityId: activity?.id || null,
+      activityName: activity?.name || null,
+      activityKind: activity?.kind || null,
       unlockedTaskStory,
     });
     if (opened.ok) {
@@ -169,6 +173,9 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
       }
       return { ok: true, interruptedByRandomEvent: true };
     }
+  }
+  if (randomEvent) {
+    skippedRandomEvent = true;
   }
 
   const notes = [activityNotes].filter(Boolean).join(" ");
@@ -185,6 +192,9 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
   }
   rootState.resolvingIndex = slotIndex + 1;
   rootState.progress = rootState.resolvingIndex / context.slotNames.length;
+  if (skippedRandomEvent) {
+    return { ok: true, skippedRandomEvent: true };
+  }
 }
 
 function resetRandomEventRuntimeState(rootState) {
@@ -206,13 +216,37 @@ function openRandomEventPromptForFlowState(rootState, pendingEvent, continuation
   }
 
   runtime.stage = "prompt";
-  runtime.pendingEvent = pendingEvent ? structuredClone(pendingEvent) : null;
+  runtime.pendingEvent = pendingEvent
+    ? {
+        id: pendingEvent.id,
+        title: pendingEvent.title,
+        body: pendingEvent.body,
+        speaker: pendingEvent.speaker,
+        slotIndex: pendingEvent.slotIndex,
+        activityId: pendingEvent.activityId || null,
+        activityKind: pendingEvent.activityKind || null,
+        activityName: pendingEvent.activityName || null,
+        choices: Array.isArray(pendingEvent.choices)
+          ? pendingEvent.choices.map((choice) => ({ id: choice.id, label: choice.label }))
+          : [],
+        sourceEvent: pendingEvent.sourceEvent || null,
+      }
+    : null;
   runtime.focusedChoiceIndex = 0;
   runtime.selectedChoiceId = null;
   runtime.resultText = null;
   runtime.rewardSummary = null;
   runtime.resolution = null;
-  runtime.continuation = continuation ? structuredClone(continuation) : null;
+  runtime.continuation = continuation
+    ? {
+        slotIndex: continuation.slotIndex,
+        activityNotes: continuation.activityNotes || null,
+        activityId: continuation.activityId || null,
+        activityName: continuation.activityName || null,
+        activityKind: continuation.activityKind || null,
+        unlockedTaskStory: continuation.unlockedTaskStory || null,
+      }
+    : null;
   return { ok: true };
 }
 
@@ -228,8 +262,9 @@ function chooseRandomEventOptionForFlowState(rootState, choiceId, context) {
 
   const pendingEvent = runtime.pendingEvent;
   const activity =
-    runtime.continuation?.activity ||
-    (typeof context.getActivity === "function" ? context.getActivity(pendingEvent.activityId) : null);
+    (typeof context.getActivity === "function"
+      ? context.getActivity(runtime.continuation?.activityId || pendingEvent.activityId)
+      : null);
   const resolution = resolveChoice(rootState, pendingEvent, choiceId, activity, {
     randomEvents: context.randomEvents,
     skillLabels: context.skillLabels,
@@ -276,17 +311,18 @@ function confirmRandomEventResultForFlowState(rootState, context) {
     : Number(rootState.resolvingFlow?.slotIndex || 0);
   const slotIndex = slotCount > 0 ? Math.max(0, Math.min(rawSlotIndex, slotCount - 1)) : 0;
   const activity =
-    continuation.activity ||
-    (typeof context.getActivity === "function"
+    typeof context.getActivity === "function"
       ? context.getActivity(continuation.activityId || runtime.pendingEvent?.activityId)
-      : null);
+      : null;
   const notes = [continuation.activityNotes, resolution.notesText].filter(Boolean).join(" ");
 
   if (typeof context.pushTimeline === "function") {
     context.pushTimeline(slotIndex, activity, notes);
   }
 
-  const detail = context.copy.dayFlowResult(context.slotNames[slotIndex], activity?.name || "", notes);
+  const activityName =
+    activity?.name || continuation.activityName || runtime.pendingEvent?.activityName || "";
+  const detail = context.copy.dayFlowResult(context.slotNames[slotIndex], activityName, notes);
   pushResolvingStoryToState(rootState, {
     title: detail.title,
     body: detail.body,

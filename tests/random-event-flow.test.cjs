@@ -140,6 +140,8 @@ test("resolveSlotForFlowState opens a random-event prompt and defers slot comple
   assert.equal(rootState.randomEventRuntime.stage, "prompt");
   assert.equal(rootState.randomEventRuntime.pendingEvent?.id, "event-1");
   assert.equal(rootState.randomEventRuntime.continuation?.slotIndex, 0);
+  assert.equal(rootState.randomEventRuntime.continuation?.activity, undefined);
+  assert.equal(rootState.randomEventRuntime.continuation?.activityId, "study");
 
   const blocked = advanceResolvingFlowState(rootState, context);
   assert.equal(blocked?.blockedByRandomEvent, true);
@@ -189,7 +191,7 @@ test("resolveSlotForFlowState ignores random events without choices", () => {
 
   const result = resolveSlotForFlowState(rootState, 0, context);
 
-  assert.equal(result?.interruptedByRandomEvent, undefined);
+  assert.equal(result?.skippedRandomEvent, true);
   assert.equal(calls.pushTimeline, 1);
   assert.equal(rootState.randomEventRuntime.stage, "idle");
   assert.equal(rootState.resolvingIndex, 1);
@@ -239,7 +241,9 @@ test("chooseRandomEventOptionForFlowState moves prompt to result without resumin
   rootState.randomEventRuntime.continuation = {
     slotIndex: 0,
     activityNotes: "activity notes",
-    activity: { id: "study", kind: "course", name: "Study" },
+    activityId: "study",
+    activityKind: "course",
+    activityName: "Study",
   };
   const context = {
     slotNames: ["morning"],
@@ -296,7 +300,9 @@ test("chooseRandomEventOptionForFlowState uses context override for resolution",
   rootState.randomEventRuntime.continuation = {
     slotIndex: 0,
     activityNotes: "activity notes",
-    activity: { id: "study", kind: "course", name: "Study" },
+    activityId: "study",
+    activityKind: "course",
+    activityName: "Study",
   };
   const context = {
     slotNames: ["morning"],
@@ -373,7 +379,9 @@ test("confirmRandomEventResultForFlowState finalizes slot once and resumes resol
   rootState.randomEventRuntime.continuation = {
     slotIndex: 0,
     activityNotes: "activity notes",
-    activity: { id: "study", kind: "course", name: "Study" },
+    activityId: "study",
+    activityKind: "course",
+    activityName: "Study",
     unlockedTaskStory: { title: "unlock", body: "unlocked", speaker: "mentor" },
   };
   const context = {
