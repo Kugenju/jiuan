@@ -275,6 +275,14 @@ const UI_TEXT = {
       return `${day > 0 ? `第 ${day} 天 · ` : ""}${title}`;
     },
   },
+  randomEvent: {
+    badge: "Random Event",
+    promptLabel: "Event Prompt",
+    resultLabel: "Event Result",
+    chooseHint: "Choose one.",
+    continueBtn: "Continue",
+    rewardPrefix: "Rewards:",
+  },
   top: {
     title: "角色状态",
     coreStatsTitle: "核心属性",
