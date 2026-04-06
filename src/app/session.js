@@ -81,6 +81,21 @@ function createGameState(options) {
           result: null,
           refining: null,
         });
+  const createRandomEventRuntimeState =
+    typeof options.createRandomEventRuntimeState === "function"
+      ? options.createRandomEventRuntimeState
+      : typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function"
+      ? window.GAME_RUNTIME.createRandomEventRuntimeState
+      : () => ({
+          stage: "idle",
+          pendingEvent: null,
+          focusedChoiceIndex: 0,
+          selectedChoiceId: null,
+          resultText: null,
+          rewardSummary: null,
+          resolution: null,
+          continuation: null,
+        });
 
   return {
     mode: "menu",
@@ -146,6 +161,7 @@ function createGameState(options) {
     summary: null,
     tasks: createTaskState(),
     taskRuntime: createTaskRuntimeState(),
+    randomEventRuntime: createRandomEventRuntimeState(),
   };
 }
 
@@ -192,9 +208,25 @@ function resetTaskStateForWeek(rootState, context) {
           result: null,
           refining: null,
         });
+  const createRandomEventRuntimeState =
+    typeof context.createRandomEventRuntimeState === "function"
+      ? context.createRandomEventRuntimeState
+      : typeof window.GAME_RUNTIME.createRandomEventRuntimeState === "function"
+      ? window.GAME_RUNTIME.createRandomEventRuntimeState
+      : () => ({
+          stage: "idle",
+          pendingEvent: null,
+          focusedChoiceIndex: 0,
+          selectedChoiceId: null,
+          resultText: null,
+          rewardSummary: null,
+          resolution: null,
+          continuation: null,
+        });
 
   rootState.tasks = createTaskState();
   rootState.taskRuntime = createTaskRuntimeState();
+  rootState.randomEventRuntime = createRandomEventRuntimeState();
 }
 
 function getPlanningAssignmentOptions(context) {

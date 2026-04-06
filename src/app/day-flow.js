@@ -6,6 +6,7 @@ const {
   applyActivityToState,
   getActivitySpeaker,
   triggerRandomEventForTiming,
+  resolveRandomEventChoice,
 } = window.GAME_RUNTIME;
 
 function createResolvingFlowState() {
@@ -19,6 +20,31 @@ function createResolvingFlowState() {
     storyTrail: [],
     justAppended: false,
   };
+}
+
+function createRandomEventRuntimeState() {
+  return {
+    stage: "idle",
+    pendingEvent: null,
+    focusedChoiceIndex: 0,
+    selectedChoiceId: null,
+    resultText: null,
+    rewardSummary: null,
+    resolution: null,
+    continuation: null,
+  };
+}
+
+function getRandomEventRuntimeState(rootState) {
+  if (!rootState.randomEventRuntime || typeof rootState.randomEventRuntime !== "object") {
+    rootState.randomEventRuntime = createRandomEventRuntimeState();
+  }
+  return rootState.randomEventRuntime;
+}
+
+function isRandomEventActive(rootState) {
+  const runtime = getRandomEventRuntimeState(rootState);
+  return runtime.stage && runtime.stage !== "idle";
 }
 
 function getResolvingSlotActivity(rootState, slotIndex, getActivity, fallbackActivityId) {
@@ -84,6 +110,9 @@ function appendResolvingSegmentForSlot(rootState, slotIndex, context) {
 }
 
 function resolveSlotForFlowState(rootState, slotIndex, context) {
+  if (isRandomEventActive(rootState)) {
+    return { ok: false, blockedByRandomEvent: true };
+  }
   const activity = getResolvingSlotActivity(rootState, slotIndex, context.getActivity, context.fallbackActivityId);
   if (activity.kind === "task") {
     return context.beginTaskActivityForSlot(rootState, activity, slotIndex, {
@@ -117,11 +146,23 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
     addLog: context.addLog,
   });
 
-  if (randomEvent?.story) {
-    pushResolvingStoryToState(rootState, randomEvent.story);
+  if (randomEvent) {
+    const opened = openRandomEventPromptForFlowState(rootState, randomEvent, {
+      slotIndex,
+      activityNotes,
+      activity,
+      unlockedTaskStory,
+    });
+    if (opened.ok) {
+      if (rootState.resolvingFlow) {
+        rootState.resolvingFlow.autoplay = false;
+        rootState.resolvingFlow.autoplayTimer = 0;
+      }
+      return { ok: true, interruptedByRandomEvent: true };
+    }
   }
 
-  const notes = [activityNotes, randomEvent?.notesText].filter(Boolean).join(" ");
+  const notes = [activityNotes].filter(Boolean).join(" ");
   context.pushTimeline(slotIndex, activity, notes);
 
   const detail = context.copy.dayFlowResult(context.slotNames[slotIndex], activity.name, notes);
@@ -135,6 +176,120 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
   }
   rootState.resolvingIndex = slotIndex + 1;
   rootState.progress = rootState.resolvingIndex / context.slotNames.length;
+}
+
+function resetRandomEventRuntimeState(rootState) {
+  rootState.randomEventRuntime = createRandomEventRuntimeState();
+  return rootState.randomEventRuntime;
+}
+
+function openRandomEventPromptForFlowState(rootState, pendingEvent, continuation) {
+  const runtime = getRandomEventRuntimeState(rootState);
+  if (runtime.stage && runtime.stage !== "idle") {
+    return { ok: false, reason: "already_active" };
+  }
+
+  runtime.stage = "prompt";
+  runtime.pendingEvent = pendingEvent ? structuredClone(pendingEvent) : null;
+  runtime.focusedChoiceIndex = 0;
+  runtime.selectedChoiceId = null;
+  runtime.resultText = null;
+  runtime.rewardSummary = null;
+  runtime.resolution = null;
+  runtime.continuation = continuation ? structuredClone(continuation) : null;
+  return { ok: true };
+}
+
+function chooseRandomEventOptionForFlowState(rootState, choiceId, context) {
+  const runtime = getRandomEventRuntimeState(rootState);
+  if (runtime.stage !== "prompt" || !runtime.pendingEvent) {
+    return { ok: false, reason: "not_prompt" };
+  }
+  if (typeof resolveRandomEventChoice !== "function") {
+    return { ok: false, reason: "missing_resolver" };
+  }
+
+  const pendingEvent = runtime.pendingEvent;
+  const activity =
+    runtime.continuation?.activity ||
+    (typeof context.getActivity === "function" ? context.getActivity(pendingEvent.activityId) : null);
+  const resolution = resolveRandomEventChoice(rootState, pendingEvent, choiceId, activity, {
+    randomEvents: context.randomEvents,
+    skillLabels: context.skillLabels,
+    uiText: context.uiText,
+    getMainFocusSkill: context.getMainFocusSkill,
+    addLog: context.addLog,
+  });
+
+  if (!resolution?.ok) {
+    return resolution || { ok: false, reason: "resolution_failed" };
+  }
+
+  runtime.stage = "result";
+  runtime.selectedChoiceId = choiceId;
+  runtime.resultText = resolution.notesText || "";
+  runtime.rewardSummary = resolution.notesText || "";
+  runtime.resolution = resolution;
+  if (Array.isArray(pendingEvent.choices)) {
+    const choiceIndex = pendingEvent.choices.findIndex((choice) => choice.id === choiceId);
+    if (choiceIndex >= 0) {
+      runtime.focusedChoiceIndex = choiceIndex;
+    }
+  }
+
+  return { ok: true, resolution };
+}
+
+function confirmRandomEventResultForFlowState(rootState, context) {
+  const runtime = getRandomEventRuntimeState(rootState);
+  if (runtime.stage !== "result") {
+    return { ok: false, reason: "not_result" };
+  }
+  const continuation = runtime.continuation;
+  const resolution = runtime.resolution;
+  if (!continuation || !resolution?.ok) {
+    return { ok: false, reason: "missing_context" };
+  }
+
+  const slotCount = Array.isArray(context.slotNames) ? context.slotNames.length : 0;
+  const rawSlotIndex = Number.isInteger(continuation.slotIndex)
+    ? continuation.slotIndex
+    : Number.isInteger(runtime.pendingEvent?.slotIndex)
+    ? runtime.pendingEvent.slotIndex
+    : Number(rootState.resolvingFlow?.slotIndex || 0);
+  const slotIndex = slotCount > 0 ? Math.max(0, Math.min(rawSlotIndex, slotCount - 1)) : 0;
+  const activity =
+    continuation.activity ||
+    (typeof context.getActivity === "function"
+      ? context.getActivity(continuation.activityId || runtime.pendingEvent?.activityId)
+      : null);
+  const notes = [continuation.activityNotes, resolution.notesText].filter(Boolean).join(" ");
+
+  if (typeof context.pushTimeline === "function") {
+    context.pushTimeline(slotIndex, activity, notes);
+  }
+
+  const detail = context.copy.dayFlowResult(context.slotNames[slotIndex], activity?.name || "", notes);
+  pushResolvingStoryToState(rootState, {
+    title: detail.title,
+    body: detail.body,
+    speaker: getActivitySpeaker(activity, context.uiText),
+  });
+  if (continuation.unlockedTaskStory) {
+    pushResolvingStoryToState(rootState, continuation.unlockedTaskStory);
+  }
+
+  rootState.resolvingIndex = Math.max(Number(rootState.resolvingIndex || 0), slotIndex + 1);
+  if (slotCount > 0) {
+    rootState.progress = rootState.resolvingIndex / slotCount;
+  }
+  if (rootState.resolvingFlow) {
+    rootState.resolvingFlow.autoplay = false;
+    rootState.resolvingFlow.autoplayTimer = 0;
+  }
+
+  resetRandomEventRuntimeState(rootState);
+  return { ok: true };
 }
 
 function createEmptyTaskRuntimeState() {
@@ -216,6 +371,13 @@ function advanceResolvingFlowState(rootState, context) {
   if (rootState.mode !== "resolving") {
     return { transitioned: false };
   }
+  if (isRandomEventActive(rootState)) {
+    if (rootState.resolvingFlow) {
+      rootState.resolvingFlow.autoplay = false;
+      rootState.resolvingFlow.autoplayTimer = 0;
+    }
+    return { transitioned: false, blockedByRandomEvent: true };
+  }
 
   const flow = rootState.resolvingFlow;
   flow.autoplayTimer = 0;
@@ -285,6 +447,11 @@ function toggleResolvingAutoplayOnState(rootState, force) {
   if (rootState.mode !== "resolving") {
     return false;
   }
+  if (isRandomEventActive(rootState)) {
+    rootState.resolvingFlow.autoplay = false;
+    rootState.resolvingFlow.autoplayTimer = 0;
+    return false;
+  }
   rootState.resolvingFlow.autoplay = typeof force === "boolean" ? force : !rootState.resolvingFlow.autoplay;
   rootState.resolvingFlow.autoplayTimer = 0;
   return true;
@@ -292,6 +459,7 @@ function toggleResolvingAutoplayOnState(rootState, force) {
 
 Object.assign(window.GAME_RUNTIME, {
   createResolvingFlowState,
+  createRandomEventRuntimeState,
   getResolvingSlotActivity,
   pushResolvingStoryToState,
   resetResolvingStoryTrailOnState,
@@ -299,6 +467,9 @@ Object.assign(window.GAME_RUNTIME, {
   showResolvingLeadForSlot,
   appendResolvingSegmentForSlot,
   resolveSlotForFlowState,
+  openRandomEventPromptForFlowState,
+  chooseRandomEventOptionForFlowState,
+  confirmRandomEventResultForFlowState,
   resumeResolvingAfterTaskAttempt,
   startDayFlow,
   advanceResolvingFlowState,
