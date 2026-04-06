@@ -1,16 +1,27 @@
 :root {
-  --bg: #07131e;
-  --bg-soft: #0f2233;
-  --panel: rgba(8, 18, 29, 0.8);
-  --panel-strong: rgba(11, 24, 38, 0.94);
-  --line: rgba(147, 194, 255, 0.18);
-  --text: #edf4ff;
-  --muted: #9ab1c8;
-  --gold: #f0c36c;
-  --jade: #63d3b1;
-  --rose: #ef8f85;
-  --sky: #89bbff;
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  --paper-bg-top: #f7f1e3;
+  --paper-bg-mid: #efe5cf;
+  --paper-bg-bottom: #e6dcc4;
+  --paper-panel: rgba(252, 248, 239, 0.74);
+  --paper-panel-strong: rgba(248, 242, 230, 0.92);
+  --line-soft: rgba(105, 87, 61, 0.18);
+  --ink-strong: #2f2418;
+  --ink-muted: #73614a;
+  --accent-daiqing: #456b6d;
+  --accent-daiqing-soft: rgba(47, 107, 102, 0.14);
+  --accent-gold-soft: #c7a45a;
+  --bg: var(--paper-bg-bottom);
+  --bg-soft: var(--paper-bg-top);
+  --panel: var(--paper-panel);
+  --panel-strong: var(--paper-panel-strong);
+  --line: var(--line-soft);
+  --text: var(--ink-strong);
+  --muted: var(--ink-muted);
+  --gold: var(--accent-gold-soft);
+  --jade: var(--accent-daiqing);
+  --rose: #b46f5a;
+  --sky: #7b91a6;
+  --shadow: 0 30px 80px rgba(96, 74, 43, 0.18);
 }
 
 * {
@@ -21,12 +32,9 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  color: var(--text);
+  color: var(--ink-strong);
   font-family: "STZhongsong", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(64, 123, 191, 0.24), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(93, 171, 153, 0.2), transparent 30%),
-    linear-gradient(160deg, #08111a 0%, #0d1826 45%, #08131f 100%);
+  background: linear-gradient(160deg, var(--paper-bg-top) 0%, var(--paper-bg-mid) 45%, var(--paper-bg-bottom) 100%);
 }
 
 body::before {
@@ -34,12 +42,13 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.18;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 36px 36px;
-  mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+  opacity: 0.5;
+  background:
+    radial-gradient(circle at top left, rgba(69, 107, 109, 0.12), transparent 28%),
+    radial-gradient(circle at 78% 22%, rgba(199, 164, 90, 0.1), transparent 24%),
+    repeating-linear-gradient(0deg, rgba(111, 92, 63, 0.03) 0 2px, transparent 2px 12px),
+    linear-gradient(180deg, rgba(255, 251, 242, 0.38), rgba(230, 220, 196, 0.14));
+  mix-blend-mode: multiply;
 }
 
 .app-shell {
@@ -91,8 +100,8 @@ body::before {
   min-height: 0;
   display: block;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #07111a;
+  border: 1px solid var(--line-soft);
+  background: var(--paper-panel-strong);
   box-shadow: var(--shadow);
 }
 
@@ -105,12 +114,14 @@ body::before {
   min-height: 0;
   overflow: auto;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   background:
     radial-gradient(circle at top right, rgba(195, 167, 255, 0.16), transparent 24%),
     radial-gradient(circle at bottom left, rgba(99, 211, 177, 0.12), transparent 22%),
     linear-gradient(160deg, #121325 0%, #171d33 50%, #0b1320 100%);
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 24px 56px rgba(5, 11, 20, 0.45),
+    inset 0 0 24px rgba(255, 255, 255, 0.08);
   padding: 22px;
 }
 
@@ -171,11 +182,14 @@ body::before {
   position: relative;
   min-height: 560px;
   border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   background:
     radial-gradient(circle at 30% 15%, rgba(137, 187, 255, 0.08), transparent 46%),
     radial-gradient(circle at 82% 78%, rgba(99, 211, 177, 0.07), transparent 40%),
     rgba(5, 10, 18, 0.9);
+  box-shadow:
+    inset 0 0 40px rgba(255, 255, 255, 0.06),
+    0 18px 38px rgba(4, 8, 18, 0.6);
   overflow: visible;
   isolation: isolate;
 }
@@ -609,8 +623,8 @@ body::before {
 
 .memory-blueprint-card {
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-soft);
+  background: var(--paper-panel);
   padding: 12px;
 }
 
@@ -640,14 +654,17 @@ body::before {
   position: relative;
   min-height: 336px;
   border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background:
     radial-gradient(circle at 20% 18%, rgba(127, 200, 255, 0.08), transparent 22%),
     radial-gradient(circle at 78% 26%, rgba(195, 167, 255, 0.08), transparent 20%),
     radial-gradient(circle at 44% 78%, rgba(99, 211, 177, 0.08), transparent 18%),
-    rgba(255, 255, 255, 0.03);
+    rgba(255, 255, 255, 0.04);
   isolation: isolate;
   overflow: hidden;
+  box-shadow:
+    0 18px 36px rgba(8, 12, 22, 0.35),
+    inset 0 1px 3px rgba(255, 255, 255, 0.15);
 }
 
 .memory-shard {
@@ -846,8 +863,8 @@ body.memory-mode .feedback-list .log-entry {
 }
 
 .panel-card {
-  background: var(--panel-strong);
-  border: 1px solid var(--line);
+  background: var(--paper-panel-strong);
+  border: 1px solid var(--line-soft);
   border-radius: 24px;
   padding: 18px;
   box-shadow: var(--shadow);
@@ -878,9 +895,10 @@ body.memory-mode .feedback-list .log-entry {
 .badge {
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(240, 195, 108, 0.14);
-  border: 1px solid rgba(240, 195, 108, 0.24);
-  color: var(--gold);
+  background: rgba(199, 164, 90, 0.18);
+  border: 1px solid rgba(199, 164, 90, 0.45);
+  color: var(--accent-gold-soft);
+  box-shadow: 0 8px 18px rgba(199, 164, 90, 0.25);
   font-size: 12px;
 }
 
@@ -927,8 +945,8 @@ body.memory-mode .feedback-list .log-entry {
 .log-entry,
 .story-card {
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-soft);
+  background: var(--paper-panel);
 }
 
 .metric {
@@ -962,7 +980,8 @@ body.memory-mode .feedback-list .log-entry {
   transition:
     transform 160ms ease,
     border-color 160ms ease,
-    background 160ms ease;
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 button {
@@ -973,10 +992,16 @@ button {
 .activity-card:hover,
 .choice-card:hover,
 .memory-piece:hover,
-.memory-cell:hover,
-.action-row button:hover {
+.memory-cell:hover {
   transform: translateY(-2px);
-  border-color: rgba(137, 187, 255, 0.5);
+  border-color: rgba(47, 107, 102, 0.42);
+  box-shadow: 0 18px 32px rgba(47, 107, 102, 0.12);
+}
+
+.action-row button:hover,
+.ghost-button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(47, 107, 102, 0.45);
 }
 
 .slot-card.active,
@@ -984,8 +1009,8 @@ button {
 .choice-card.active,
 .memory-piece.active,
 .memory-cell.active {
-  border-color: rgba(99, 211, 177, 0.8);
-  background: rgba(99, 211, 177, 0.14);
+  border-color: rgba(47, 107, 102, 0.56);
+  background: var(--accent-daiqing-soft);
 }
 
 .slot-card.empty {
@@ -1028,9 +1053,9 @@ button {
 
 .action-row button,
 .ghost-button {
-  border: 1px solid rgba(137, 187, 255, 0.32);
-  background: rgba(137, 187, 255, 0.12);
-  color: var(--text);
+  border: 1px solid var(--line-soft);
+  background: rgba(250, 246, 236, 0.9);
+  color: var(--ink-strong);
   border-radius: 999px;
   padding: 10px 16px;
   cursor: pointer;
@@ -1042,13 +1067,15 @@ button {
 
 .action-row button.primary,
 .ghost-button.primary {
-  background: linear-gradient(135deg, rgba(99, 211, 177, 0.24), rgba(137, 187, 255, 0.18));
-  border-color: rgba(99, 211, 177, 0.52);
+  background: linear-gradient(135deg, rgba(47, 107, 102, 0.22), rgba(96, 132, 121, 0.14));
+  border-color: rgba(47, 107, 102, 0.52);
 }
 
-.action-row button.warn {
-  background: rgba(239, 143, 133, 0.14);
-  border-color: rgba(239, 143, 133, 0.4);
+.action-row button.warn,
+.ghost-button.warn {
+  background: rgba(239, 143, 133, 0.12);
+  border-color: rgba(239, 143, 133, 0.36);
+  color: var(--ink-strong);
 }
 
 .story-card,
@@ -1059,7 +1086,7 @@ button {
 }
 
 #main-panel .story-card {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--paper-panel-strong);
 }
 
 #main-panel .resolving-shell {
@@ -1078,8 +1105,9 @@ button {
 }
 
 #resolve-story-card:focus-visible {
-  outline: 2px solid rgba(137, 187, 255, 0.7);
+  outline: 2px solid rgba(69, 107, 109, 0.75);
   outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(199, 164, 90, 0.2);
 }
 
 .resolve-story-trail {
@@ -1157,13 +1185,15 @@ button {
 }
 
 .phase-card.current {
-  border-color: rgba(137, 187, 255, 0.6);
-  background: rgba(137, 187, 255, 0.12);
+  border-color: rgba(47, 107, 102, 0.5);
+  background: rgba(47, 107, 102, 0.18);
+  box-shadow: 0 10px 22px rgba(8, 32, 30, 0.4);
 }
 
 .phase-card.done {
-  border-color: rgba(99, 211, 177, 0.55);
-  background: rgba(99, 211, 177, 0.12);
+  border-color: rgba(240, 195, 108, 0.48);
+  background: rgba(240, 195, 108, 0.14);
+  box-shadow: 0 10px 22px rgba(72, 42, 0, 0.25);
 }
 
 .hint-grid,
@@ -1183,14 +1213,14 @@ button {
 .hint-card,
 .quick-card {
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-soft);
+  background: var(--paper-panel);
   padding: 14px;
 }
 
 .focus-callout {
-  border-color: rgba(240, 195, 108, 0.35);
-  background: linear-gradient(135deg, rgba(240, 195, 108, 0.12), rgba(137, 187, 255, 0.08));
+  border-color: rgba(199, 164, 90, 0.4);
+  background: linear-gradient(135deg, rgba(199, 164, 90, 0.12), rgba(47, 107, 102, 0.12));
 }
 
 .mini-progress {
@@ -1389,16 +1419,17 @@ button {
 
 .course-selection-fixed {
   margin-top: 12px;
-  border-color: rgba(137, 187, 255, 0.24);
-  background: rgba(137, 187, 255, 0.06);
+  border-color: rgba(199, 164, 90, 0.3);
+  background: rgba(199, 164, 90, 0.06);
 }
 
 .planning-actions {
   margin-top: 0;
   padding-top: 10px;
   padding-bottom: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(11, 24, 38, 0), rgba(11, 24, 38, 0.9) 28%);
+  border-top: 1px solid rgba(168, 142, 112, 0.38);
+  background: linear-gradient(180deg, rgba(248, 242, 230, 0), rgba(248, 242, 230, 0.94) 28%);
+  backdrop-filter: blur(8px);
   position: sticky;
   bottom: 0;
 }
@@ -1424,9 +1455,11 @@ button {
 .task-round-pill {
   min-width: 84px;
   border-radius: 999px;
-  border: 1px solid rgba(99, 211, 177, 0.28);
-  background: rgba(99, 211, 177, 0.08);
   padding: 8px 12px;
+  border: 1px solid rgba(47, 107, 102, 0.42);
+  background: rgba(199, 164, 90, 0.18);
+  color: var(--ink-strong);
+  box-shadow: 0 6px 12px rgba(47, 107, 102, 0.22);
 }
 
 .task-round-pill strong,
@@ -1560,13 +1593,13 @@ button {
 }
 
 .left-slot-card.fixed {
-  border-color: rgba(137, 187, 255, 0.22);
-  background: rgba(137, 187, 255, 0.07);
+  border-color: rgba(47, 107, 102, 0.4);
+  background: rgba(47, 107, 102, 0.08);
 }
 
 .locked-slot-note {
-  border-color: rgba(137, 187, 255, 0.24);
-  background: rgba(137, 187, 255, 0.06);
+  border-color: rgba(199, 164, 90, 0.3);
+  background: rgba(199, 164, 90, 0.06);
 }
 
 .left-slot-card strong,
@@ -1603,8 +1636,8 @@ button {
 .overlay-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(3, 8, 14, 0.56);
-  backdrop-filter: blur(4px);
+  background: rgba(64, 79, 76, 0.24);
+  backdrop-filter: blur(3px);
   z-index: 20;
 }
 
@@ -1659,8 +1692,8 @@ button {
 
 .modal-rule {
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(168, 142, 112, 0.45);
+  background: rgba(252, 248, 238, 0.82);
   padding: 14px;
 }
 
@@ -1676,12 +1709,29 @@ button {
 }
 
 .drawer-close {
-  border: 1px solid rgba(239, 143, 133, 0.4);
-  background: rgba(239, 143, 133, 0.14);
-  color: var(--text);
+  border: 1px solid rgba(199, 164, 90, 0.45);
+  background: rgba(199, 164, 90, 0.12);
+  color: var(--ink-strong);
   border-radius: 999px;
   padding: 8px 14px;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.drawer-close:hover {
+  transform: translateY(-1px);
+  border-color: rgba(47, 107, 102, 0.45);
+  background: rgba(47, 107, 102, 0.12);
+}
+
+.drawer-close:focus-visible {
+  outline: 2px solid rgba(69, 107, 109, 0.72);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(199, 164, 90, 0.2);
 }
 
 .story-card strong,
@@ -1901,5 +1951,14 @@ button {
 
   #debug-refining-canvas {
     min-height: 320px;
+  }
+
+  .phase-card,
+  .slot-card,
+  .activity-card,
+  .choice-card,
+  .memory-piece,
+  .memory-cell {
+    border-color: rgba(67, 99, 93, 0.42);
   }
 }

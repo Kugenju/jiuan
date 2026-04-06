@@ -127,6 +127,35 @@ const REFINING_STAGE_LAYOUT = {
   ],
 };
 
+const CANVAS_THEME = {
+  backgroundTop: "#f3ead8",
+  backgroundMid: "#e8ddc6",
+  backgroundBottom: "#d9ccb3",
+  bannerFill: "rgba(248,242,230,0.84)",
+  bannerStroke: "rgba(168,142,112,0.32)",
+  bannerTitle: "#2f2418",
+  bannerSubtitle: "#73614a",
+  panelFill: "rgba(248,242,230,0.78)",
+  panelFillStrong: "rgba(248,242,230,0.88)",
+  panelStroke: "rgba(168,142,112,0.32)",
+  panelText: "#2f2418",
+  panelMuted: "#6f604c",
+  accentDaiqing: "#456b6d",
+  accentDaiqingSoft: "rgba(69,107,109,0.18)",
+  accentGold: "#c7a45a",
+  accentGoldSoft: "rgba(199,164,90,0.18)",
+  accentGoldLine: "rgba(199,164,90,0.42)",
+  accentCinnabar: "#b46f5a",
+  slotIdleFill: "rgba(248,242,230,0.58)",
+  slotDoneFill: "rgba(199,164,90,0.24)",
+  slotSelectedFill: "rgba(69,107,109,0.22)",
+  progressTrack: "rgba(168,142,112,0.22)",
+  progressFill: "#456b6d",
+  sceneSilhouette: "rgba(117,101,72,0.12)",
+  sceneMist: "rgba(69,107,109,0.08)",
+  sunGlow: "rgba(199,164,90,0.18)",
+};
+
 function createRng(seed = 20260313) {
   let value = seed >>> 0;
   return () => {
@@ -1443,16 +1472,16 @@ function render() {
 
 function drawBackground() {
   const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  gradient.addColorStop(0, "#09131d");
-  gradient.addColorStop(0.45, "#10253a");
-  gradient.addColorStop(1, "#08121c");
+  gradient.addColorStop(0, CANVAS_THEME.backgroundTop);
+  gradient.addColorStop(0.45, CANVAS_THEME.backgroundMid);
+  gradient.addColorStop(1, CANVAS_THEME.backgroundBottom);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (let i = 0; i < 44; i += 1) {
     const x = (i * 71 + Math.sin(state.scenePulse * 0.6 + i) * 18 + 40) % canvas.width;
     const y = (i * 29 + Math.cos(state.scenePulse * 0.4 + i) * 22 + 50) % canvas.height;
-    ctx.fillStyle = `rgba(255,255,255,${0.03 + ((i % 7) * 0.006)})`;
+    ctx.fillStyle = `rgba(117,101,72,${0.03 + ((i % 7) * 0.006)})`;
     ctx.beginPath();
     ctx.arc(x, y, 1.6 + (i % 3), 0, Math.PI * 2);
     ctx.fill();
@@ -1488,20 +1517,20 @@ function drawScene() {
 }
 
 function drawMenuScene() {
-  drawAcademyBackdrop("#143048", "#0a1625");
+  drawAcademyBackdrop("#efe6d8", "#ddd0b8");
   drawBanner(UI_TEXT.canvas.menuTitle, UI_TEXT.canvas.menuSubtitle);
   drawFloatingCards(UI_TEXT.canvas.menuCards, 118);
 }
 
 function drawPlanningScene() {
-  drawAcademyBackdrop("#173856", "#0d1a28");
+  drawAcademyBackdrop("#f1eadc", "#ddd0b8");
   drawBanner(UI_TEXT.canvas.planningTitle(state.day), UI_TEXT.canvas.planningSubtitle);
   drawTimelineStrip();
   drawStatConstellation();
 }
 
 function drawCourseSelectionScene() {
-  drawAcademyBackdrop("#162c46", "#0b1625");
+  drawAcademyBackdrop("#f0e7d9", "#ddd0b8");
   drawBanner("开周选课", "先在整周课表里锁定固定课程，再进入每天的自由安排。");
 
   const originX = 84;
@@ -1511,33 +1540,33 @@ function drawCourseSelectionScene() {
   const cellHeight = 46;
 
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillStyle = CANVAS_THEME.panelFill;
   ctx.fillRect(originX, originY, labelWidth + cellWidth * state.totalDays, cellHeight * (SLOT_NAMES.length + 1));
 
-  ctx.fillStyle = "#9ab1c8";
+  ctx.fillStyle = CANVAS_THEME.panelMuted;
   ctx.font = "15px 'Microsoft YaHei'";
   ctx.fillText("时段", originX + 28, originY + 30);
   for (let day = 1; day <= state.totalDays; day += 1) {
     const x = originX + labelWidth + (day - 1) * cellWidth;
-    ctx.fillStyle = day === state.day ? "#f0c36c" : "#c8d7ea";
+    ctx.fillStyle = day === state.day ? CANVAS_THEME.accentGold : CANVAS_THEME.panelText;
     ctx.fillText(getWeekdayLabel(day), x + 26, originY + 30);
   }
 
   SLOT_NAMES.forEach((slotName, slotIndex) => {
     const y = originY + cellHeight * (slotIndex + 1);
-    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillStyle = CANVAS_THEME.panelFillStrong;
     ctx.fillRect(originX, y, labelWidth, cellHeight - 2);
-    ctx.fillStyle = "#c8d7ea";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.fillText(slotName, originX + 24, y + 28);
 
     for (let day = 1; day <= state.totalDays; day += 1) {
       const activity = getActivity(state.weeklyTimetable[day - 1]?.[slotIndex]);
       const x = originX + labelWidth + (day - 1) * cellWidth;
-      ctx.fillStyle = activity ? `${getCourseSkillColor(activity)}22` : "rgba(255,255,255,0.03)";
+      ctx.fillStyle = activity ? `${getCourseSkillColor(activity)}22` : CANVAS_THEME.slotIdleFill;
       ctx.fillRect(x, y, cellWidth - 4, cellHeight - 4);
-      ctx.strokeStyle = activity ? `${getCourseSkillColor(activity)}aa` : "rgba(255,255,255,0.08)";
+      ctx.strokeStyle = activity ? `${getCourseSkillColor(activity)}aa` : CANVAS_THEME.panelStroke;
       ctx.strokeRect(x, y, cellWidth - 4, cellHeight - 4);
-      ctx.fillStyle = activity ? "#edf4ff" : "#7f94ab";
+      ctx.fillStyle = activity ? CANVAS_THEME.panelText : CANVAS_THEME.panelMuted;
       ctx.font = activity ? "13px 'Microsoft YaHei'" : "12px 'Microsoft YaHei'";
       const text = activity ? activity.name.replace("上", "").replace("去", "") : "待选";
       ctx.fillText(text, x + 10, y + 27, cellWidth - 20);
@@ -1550,18 +1579,18 @@ function drawResolvingScene() {
   const currentIndex = Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
   const current = getActivity(state.schedule[currentIndex]) || ACTIVITIES[0];
   const palettes = {
-    lecture: ["#10263d", "#1e4d6f"],
-    seminar: ["#1a2543", "#37538b"],
-    workshop: ["#2b1e28", "#7c4b54"],
-    desk: ["#1f252f", "#5c6672"],
-    cafeteria: ["#2a2116", "#896139"],
-    dorm: ["#1b2233", "#49617d"],
-    training: ["#13231c", "#32674e"],
-    arcade: ["#23192f", "#724d88"],
-    city: ["#152432", "#587c8f"],
-    job: ["#2d2419", "#876b3e"],
+    lecture: ["#eef0e7", "#ddd4c2"],
+    seminar: ["#efe7dd", "#ddd1c4"],
+    workshop: ["#efe0d4", "#dbc9bc"],
+    desk: ["#eee7da", "#d6cebf"],
+    cafeteria: ["#f1e3d2", "#dcc6a6"],
+    dorm: ["#ece7dc", "#d2cabb"],
+    training: ["#e5ece5", "#ccd3c6"],
+    arcade: ["#ebe4dc", "#d6cbbe"],
+    city: ["#e8ece8", "#d0d4cb"],
+    job: ["#eee2d2", "#dac8b2"],
   };
-  const palette = palettes[current.scene] || ["#12283e", "#2f5b78"];
+  const palette = palettes[current.scene] || ["#efe6d8", "#ddd0b8"];
   drawAcademyBackdrop(palette[0], palette[1]);
   drawBanner(UI_TEXT.canvas.resolvingTitle(state.day, current.name), UI_TEXT.canvas.resolvingSubtitle);
 
@@ -1569,25 +1598,30 @@ function drawResolvingScene() {
   const centerY = canvas.height * 0.62;
   ctx.save();
   ctx.translate(centerX, centerY);
-  ctx.fillStyle = "rgba(255,255,255,0.07)";
+  ctx.fillStyle = CANVAS_THEME.panelFill;
   ctx.beginPath();
   ctx.arc(0, 0, 86 + Math.sin(state.scenePulse * 2.4) * 4, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#f0c36c";
+  ctx.fillStyle = CANVAS_THEME.accentGold;
   ctx.beginPath();
   ctx.arc(0, -46, 22, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#d9e4ff";
+  ctx.fillStyle = CANVAS_THEME.panelFillStrong;
   ctx.fillRect(-24, -24, 48, 88);
-  ctx.fillStyle = current.scene === "workshop" ? "#ef8f85" : current.scene === "training" ? "#63d3b1" : "#89bbff";
+  ctx.fillStyle =
+    current.scene === "workshop"
+      ? CANVAS_THEME.accentCinnabar
+      : current.scene === "training"
+        ? CANVAS_THEME.accentDaiqing
+        : CANVAS_THEME.accentGold;
   ctx.fillRect(-54, 18, 108, 16);
   ctx.restore();
 
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "24px 'Microsoft YaHei'";
   ctx.fillText(UI_TEXT.canvas.resolvingSlot(getSlotLabel(currentIndex)), 470, 210);
   ctx.font = "18px 'Microsoft YaHei'";
-  wrapText(current.summary, 470, 250, 360, 32, "#c8d7ea");
+  wrapText(current.summary, 470, 250, 360, 32, CANVAS_THEME.panelMuted);
   drawCanvasProgress(470, 330, 340, 16, state.progress);
   drawTimelineStrip();
 }
@@ -1611,36 +1645,40 @@ function drawTaskScene() {
       ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activity.name)
       : `剩余 ${remainingDays} 天 · ${taskDef?.objective?.name || activity.name}`;
 
-  drawAcademyBackdrop("#2b1d16", "#6b4125");
+  drawAcademyBackdrop("#f0e5d8", "#ddc7af");
   drawBanner(title, subtitle);
 
-  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillStyle = CANVAS_THEME.panelFill;
   ctx.fillRect(56, 134, 430, 348);
-  ctx.strokeStyle = "rgba(137,187,255,0.32)";
+  ctx.strokeStyle = CANVAS_THEME.panelStroke;
   ctx.strokeRect(56, 134, 430, 348);
-  ctx.fillStyle = "#edf4ff";
+  ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "22px 'Microsoft YaHei'";
   ctx.fillText("翻牌区", 82, 164);
-  ctx.fillStyle = "#b6c9df";
+  ctx.fillStyle = CANVAS_THEME.panelMuted;
   ctx.font = "14px 'Microsoft YaHei'";
   ctx.fillText("点击卡牌翻开，再点击已翻开的卡牌选中", 82, 192);
 
   stageView.cards.forEach((card) => {
     ctx.fillStyle = card.isUsed
-      ? "rgba(99,211,177,0.18)"
+      ? CANVAS_THEME.accentGoldSoft
       : card.revealed
-        ? "rgba(137,187,255,0.18)"
-        : "rgba(255,255,255,0.08)";
+        ? CANVAS_THEME.accentDaiqingSoft
+        : CANVAS_THEME.slotIdleFill;
     ctx.fillRect(card.x, card.y, card.width, card.height);
-    ctx.strokeStyle = card.isSelected ? "#f0c36c" : card.isUsed ? "rgba(99,211,177,0.54)" : "rgba(255,255,255,0.18)";
+    ctx.strokeStyle = card.isSelected
+      ? CANVAS_THEME.accentGold
+      : card.isUsed
+        ? CANVAS_THEME.accentDaiqing
+        : CANVAS_THEME.panelStroke;
     ctx.lineWidth = card.isSelected ? 3 : 1.5;
     ctx.strokeRect(card.x, card.y, card.width, card.height);
 
     ctx.textAlign = "center";
-    ctx.fillStyle = "#edf4ff";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = card.revealed ? "18px 'Microsoft YaHei'" : "28px 'Microsoft YaHei'";
     ctx.fillText(card.revealed ? getRefiningCardLabel(card) : "?", card.x + card.width / 2, card.y + 38);
-    ctx.fillStyle = card.isUsed ? "#63d3b1" : card.revealed ? "#b6c9df" : "#9ab1c8";
+    ctx.fillStyle = card.isUsed ? CANVAS_THEME.accentDaiqing : CANVAS_THEME.panelMuted;
     ctx.font = "12px 'Microsoft YaHei'";
     ctx.fillText(card.isUsed ? "已放入牌阵" : card.revealed ? "再次点击选中" : "点击翻开", card.x + card.width / 2, card.y + 64);
     ctx.textAlign = "left";
@@ -1651,7 +1689,7 @@ function drawTaskScene() {
     y: slot.y + slot.height / 2,
   }));
   if (slotCenters.length === 3) {
-    ctx.strokeStyle = "rgba(240,195,108,0.4)";
+    ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(slotCenters[0].x, slotCenters[0].y);
@@ -1661,36 +1699,36 @@ function drawTaskScene() {
     ctx.stroke();
   }
 
-  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillStyle = CANVAS_THEME.panelFill;
   ctx.fillRect(534, 134, 358, 348);
-  ctx.strokeStyle = "rgba(240,195,108,0.28)";
+  ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
   ctx.strokeRect(534, 134, 358, 348);
-  ctx.fillStyle = "#f0c36c";
+  ctx.fillStyle = CANVAS_THEME.accentGold;
   ctx.font = "22px 'Microsoft YaHei'";
   ctx.fillText("三角牌阵", 560, 164);
-  ctx.fillStyle = "#d7e6fb";
+  ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "15px 'Microsoft YaHei'";
-  wrapText(taskDef?.objective?.name || activity.name, 560, 192, 304, 24, "#edf4ff");
-  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 560, 238, 304, 22, "#b6c9df");
+  wrapText(taskDef?.objective?.name || activity.name, 560, 192, 304, 24, CANVAS_THEME.panelText);
+  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 560, 238, 304, 22, CANVAS_THEME.panelMuted);
 
   stageView.slots.forEach((slot) => {
     const card = slot.cardId ? attempt?.deck?.find((entry) => entry.id === slot.cardId) : null;
     const cardLabel = card ? getRefiningCardLabel(card) : null;
-    ctx.fillStyle = slot.cardId ? "rgba(99,211,177,0.24)" : "rgba(255,255,255,0.08)";
+    ctx.fillStyle = slot.cardId ? CANVAS_THEME.accentDaiqingSoft : CANVAS_THEME.slotIdleFill;
     ctx.fillRect(slot.x, slot.y, slot.width, slot.height);
-    ctx.strokeStyle = slot.cardId ? "rgba(99,211,177,0.6)" : "rgba(255,255,255,0.18)";
+    ctx.strokeStyle = slot.cardId ? CANVAS_THEME.accentDaiqing : CANVAS_THEME.panelStroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(slot.x, slot.y, slot.width, slot.height);
-    ctx.fillStyle = "#edf4ff";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = "14px 'Microsoft YaHei'";
     ctx.fillText(`槽位 ${slot.index + 1}`, slot.x + 14, slot.y + 24);
     ctx.font = "18px 'Microsoft YaHei'";
     ctx.fillText(cardLabel || "待放置", slot.x + 14, slot.y + 52);
   });
 
-  ctx.fillStyle = "rgba(8,18,29,0.68)";
+  ctx.fillStyle = CANVAS_THEME.panelFillStrong;
   ctx.fillRect(560, 438, 304, 30);
-  ctx.fillStyle = "#edf4ff";
+  ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "14px 'Microsoft YaHei'";
   ctx.fillText(
     getSelectedTaskCard(state)
@@ -1747,21 +1785,21 @@ function drawSummaryScene() {
     typeof UI_TEXT.canvas.summarySubtitle === "function"
       ? UI_TEXT.canvas.summarySubtitle(summaryWeek, summaryTotalWeeks)
       : UI_TEXT.canvas.summarySubtitle;
-  drawAcademyBackdrop("#172036", "#274b6c");
+  drawAcademyBackdrop("#efe7d9", "#d9ccb3");
   drawBanner(summaryTitle, summarySubtitle);
   const rank = state.summary?.rank || UI_TEXT.summary.unranked;
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fillStyle = CANVAS_THEME.panelFill;
   ctx.fillRect(150, 160, 660, 240);
-  ctx.strokeStyle = "rgba(240,195,108,0.45)";
+  ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
   ctx.lineWidth = 2;
   ctx.strokeRect(150, 160, 660, 240);
-  ctx.fillStyle = "#f0c36c";
+  ctx.fillStyle = CANVAS_THEME.accentGold;
   ctx.font = "48px 'STZhongsong', 'Microsoft YaHei'";
   ctx.fillText(rank, 420, 255);
-  ctx.fillStyle = "#e8f1ff";
+  ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "22px 'Microsoft YaHei'";
   ctx.fillText(UI_TEXT.canvas.summaryBest(SKILL_LABELS[state.summary.bestSkill[0]], state.summary.bestSkill[1]), 250, 310);
-  wrapText(state.summary.majorBeat, 250, 350, 460, 30, "#c9d8ea");
+  wrapText(state.summary.majorBeat, 250, 350, 460, 30, CANVAS_THEME.panelMuted);
 }
 
 function drawAcademyBackdrop(topColor, bottomColor) {
@@ -1770,27 +1808,29 @@ function drawAcademyBackdrop(topColor, bottomColor) {
   gradient.addColorStop(1, bottomColor);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillStyle = CANVAS_THEME.sceneSilhouette;
   for (let i = 0; i < 9; i += 1) {
     const height = 120 + (i % 4) * 48;
     ctx.fillRect(i * 120, canvas.height - height, 90, height);
   }
-  ctx.fillStyle = "rgba(240,195,108,0.15)";
+  ctx.fillStyle = CANVAS_THEME.sunGlow;
   ctx.beginPath();
   ctx.arc(canvas.width - 180, 110, 56, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = CANVAS_THEME.sceneMist;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawBanner(title, subtitle) {
-  ctx.fillStyle = "rgba(8,18,29,0.7)";
+  ctx.fillStyle = CANVAS_THEME.bannerFill;
   ctx.fillRect(44, 36, 872, 112);
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.strokeStyle = CANVAS_THEME.bannerStroke;
   ctx.strokeRect(44, 36, 872, 112);
-  ctx.fillStyle = "#edf4ff";
+  ctx.fillStyle = CANVAS_THEME.bannerTitle;
   ctx.font = "42px 'STZhongsong', 'Microsoft YaHei'";
   ctx.fillText(title, 72, 90);
   ctx.font = "18px 'Microsoft YaHei'";
-  ctx.fillStyle = "#b8c9dc";
+  ctx.fillStyle = CANVAS_THEME.bannerSubtitle;
   ctx.fillText(subtitle, 72, 124);
 }
 
@@ -1798,11 +1838,11 @@ function drawFloatingCards(labels, y) {
   labels.forEach((label, index) => {
     const x = 110 + index * 190 + Math.sin(state.scenePulse + index) * 10;
     const offsetY = y + Math.cos(state.scenePulse * 1.2 + index) * 8;
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillStyle = CANVAS_THEME.panelFill;
     ctx.fillRect(x, offsetY, 160, 90);
-    ctx.strokeStyle = "rgba(137,187,255,0.28)";
+    ctx.strokeStyle = CANVAS_THEME.panelStroke;
     ctx.strokeRect(x, offsetY, 160, 90);
-    ctx.fillStyle = "#edf4ff";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = "22px 'Microsoft YaHei'";
     ctx.fillText(label, x + 22, offsetY + 52);
   });
@@ -1816,16 +1856,19 @@ function drawTimelineStrip() {
   const y = 444;
   SLOT_NAMES.forEach((name, index) => {
     const x = startX + index * (cardWidth + gap);
-    ctx.fillStyle = index < state.resolvingIndex ? "rgba(99,211,177,0.35)" : "rgba(255,255,255,0.08)";
+    ctx.fillStyle = CANVAS_THEME.slotIdleFill;
+    if (index < state.resolvingIndex) {
+      ctx.fillStyle = CANVAS_THEME.slotDoneFill;
+    }
     if (state.mode === "planning" && state.selectedSlot === index) {
-      ctx.fillStyle = "rgba(137,187,255,0.28)";
+      ctx.fillStyle = CANVAS_THEME.slotSelectedFill;
     }
     ctx.fillRect(x, y, cardWidth, 54);
-    ctx.fillStyle = "#edf4ff";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = `${SLOT_NAMES.length > 5 ? 16 : 18}px 'Microsoft YaHei'`;
     ctx.fillText(name, x + 16, y + 24);
     const activity = getActivity(state.schedule[index]);
-    ctx.fillStyle = "#b8c9dc";
+    ctx.fillStyle = CANVAS_THEME.panelMuted;
     ctx.font = "14px 'Microsoft YaHei'";
     ctx.fillText(activity ? activity.name : UI_TEXT.common.unassigned, x + 16, y + 44);
   });
@@ -1842,7 +1885,7 @@ function drawStatConstellation() {
   const centerX = 760;
   const centerY = 310;
   const radius = 120;
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.strokeStyle = CANVAS_THEME.panelStroke;
   for (let ring = 1; ring <= 4; ring += 1) {
     ctx.beginPath();
     ctx.arc(centerX, centerY, (radius / 4) * ring, 0, Math.PI * 2);
@@ -1860,25 +1903,25 @@ function drawStatConstellation() {
     }
   });
   ctx.closePath();
-  ctx.fillStyle = "rgba(99,211,177,0.2)";
+  ctx.fillStyle = CANVAS_THEME.accentDaiqingSoft;
   ctx.fill();
-  ctx.strokeStyle = "rgba(99,211,177,0.7)";
+  ctx.strokeStyle = CANVAS_THEME.accentDaiqing;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.lineWidth = 1;
   points.forEach((point) => {
     const x = centerX + Math.cos(point.angle) * (radius + 30);
     const y = centerY + Math.sin(point.angle) * (radius + 30);
-    ctx.fillStyle = "#edf4ff";
+    ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = "16px 'Microsoft YaHei'";
     ctx.fillText(`${point.label} ${point.value}`, x - 30, y);
   });
 }
 
 function drawCanvasProgress(x, y, width, height, progress) {
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fillStyle = CANVAS_THEME.progressTrack;
   ctx.fillRect(x, y, width, height);
-  ctx.fillStyle = "#63d3b1";
+  ctx.fillStyle = CANVAS_THEME.progressFill;
   ctx.fillRect(x, y, width * progress, height);
 }
 
