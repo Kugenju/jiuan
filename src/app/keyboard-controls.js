@@ -18,20 +18,20 @@ function createKeyboardHandler(context) {
       if (key === "arrowleft" || key === "arrowup") {
         if (typeof context.focusRandomEventChoice === "function") {
           context.focusRandomEventChoice(-1);
+          return;
         }
-        return;
       }
       if (key === "arrowright" || key === "arrowdown") {
         if (typeof context.focusRandomEventChoice === "function") {
           context.focusRandomEventChoice(1);
+          return;
         }
-        return;
       }
       if (key === " " || key === "enter") {
         if (typeof context.activateRandomEventChoice === "function") {
           context.activateRandomEventChoice();
+          return;
         }
-        return;
       }
     }
 

@@ -1,7 +1,9 @@
 (() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
-function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
+function renderRandomEventModalHtml(input = {}) {
+  const runtime = input.runtime || input.randomEventRuntime || {};
+  const uiText = input.uiText || {};
   const stage = runtime?.stage || "idle";
   if (!stage || stage === "idle") {
     return "";
@@ -18,6 +20,8 @@ function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
   const continueBtn = randomEventText.continueBtn || "";
   const rewardPrefix = randomEventText.rewardPrefix || "";
 
+  const badgeMarkup = badge ? `<span class="badge">${badge}</span>` : "";
+
   if (stage === "prompt") {
     const choices = Array.isArray(pendingEvent.choices) ? pendingEvent.choices : [];
     const choiceButtons = choices
@@ -25,7 +29,7 @@ function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
         (choice, index) => `
           <button
             class="choice-card ${index === runtime.focusedChoiceIndex ? "active" : ""}"
-            data-random-event-choice="${choice.id}"
+            ${choice?.id ? `data-random-event-choice="${choice.id}"` : ""}
             type="button"
           >
             <strong>${choice.label || ""}</strong>
@@ -38,7 +42,7 @@ function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
       <div class="random-event-modal">
         <div class="panel-title">
           <h2>${promptLabel || title}</h2>
-          <span class="badge">${badge}</span>
+          ${badgeMarkup}
         </div>
         <div class="story-card">
           <strong>${title}</strong>
@@ -70,7 +74,7 @@ function renderRandomEventModalHtml(runtime = {}, uiText = {}) {
       <div class="random-event-modal">
         <div class="panel-title">
           <h2>${resultLabel || title}</h2>
-          <span class="badge">${badge}</span>
+          ${badgeMarkup}
         </div>
         <div class="story-card">
           <strong>${title}</strong>

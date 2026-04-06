@@ -73,7 +73,7 @@ test("renderRandomEventModalHtml prompt hides rewards and includes choice button
   const windowObject = loadScripts(["src/app/random-event-view.js"]);
   const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
 
-  const html = renderRandomEventModalHtml(createPromptRuntime(), UI_TEXT);
+  const html = renderRandomEventModalHtml({ runtime: createPromptRuntime(), uiText: UI_TEXT });
 
   assert.match(html, /Random Event/);
   assert.match(html, /Event Prompt/);
@@ -82,6 +82,7 @@ test("renderRandomEventModalHtml prompt hides rewards and includes choice button
   assert.match(html, /Choose one\./);
   assert.match(html, /Accept/);
   assert.match(html, /Ignore/);
+  assert.match(html, /choice-card active/);
   assert.doesNotMatch(html, /Rewards/);
   assert.doesNotMatch(html, /Continue/);
 });
@@ -90,7 +91,7 @@ test("renderRandomEventModalHtml result shows reward summary and continue button
   const windowObject = loadScripts(["src/app/random-event-view.js"]);
   const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
 
-  const html = renderRandomEventModalHtml(createResultRuntime(), UI_TEXT);
+  const html = renderRandomEventModalHtml({ runtime: createResultRuntime(), uiText: UI_TEXT });
 
   assert.match(html, /Event Result/);
   assert.match(html, /A note/);
@@ -98,6 +99,18 @@ test("renderRandomEventModalHtml result shows reward summary and continue button
   assert.match(html, /Rewards/);
   assert.match(html, /Insight \+1/);
   assert.match(html, /Continue/);
+});
+
+test("renderRandomEventModalHtml returns empty string for idle stage", () => {
+  const windowObject = loadScripts(["src/app/random-event-view.js"]);
+  const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
+
+  const html = renderRandomEventModalHtml({
+    runtime: { stage: "idle" },
+    uiText: UI_TEXT,
+  });
+
+  assert.equal(html, "");
 });
 
 test("keyboard handler routes resolving keys to random-event modal", () => {
@@ -146,4 +159,33 @@ test("keyboard handler routes resolving keys to random-event modal", () => {
   assert.equal(calls.activate, 1);
   assert.equal(calls.advance, 0);
   assert.ok(calls.preventDefault >= 2);
+});
+
+test("keyboard handler falls back when random-event hook is missing", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    advance: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "resolving",
+      randomEventRuntime: {
+        stage: "prompt",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    advanceResolvingFlow: () => {
+      calls.advance += 1;
+    },
+  });
+
+  handler({
+    key: "Enter",
+    preventDefault: () => {},
+  });
+
+  assert.equal(calls.advance, 1);
 });
