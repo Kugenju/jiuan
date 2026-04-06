@@ -184,7 +184,7 @@ test("keyboard handler routes resolving keys to random-event modal", () => {
   assert.ok(calls.preventDefault >= 2);
 });
 
-test("keyboard handler falls back when random-event hook is missing", () => {
+test("keyboard handler does not fall back when random-event hook is missing", () => {
   const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
   const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
   const calls = {
@@ -210,7 +210,7 @@ test("keyboard handler falls back when random-event hook is missing", () => {
     preventDefault: () => {},
   });
 
-  assert.equal(calls.advance, 1);
+  assert.equal(calls.advance, 0);
 });
 
 test("keyboard handler does not route random-event keys outside resolving mode", () => {
@@ -308,4 +308,43 @@ test("keyboard handler confirms random-event result on enter/space", () => {
   assert.equal(calls.activate, 0);
   assert.equal(calls.confirm, 2);
   assert.equal(calls.advance, 0);
+});
+
+test("keyboard handler blocks unrelated keys when random-event modal is active", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    toggleStats: 0,
+    toggleAutoplay: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "resolving",
+      randomEventRuntime: {
+        stage: "prompt",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    toggleStatsPanel: () => {
+      calls.toggleStats += 1;
+    },
+    toggleResolvingAutoplay: () => {
+      calls.toggleAutoplay += 1;
+    },
+  });
+
+  handler({
+    key: "i",
+    preventDefault: () => {},
+  });
+
+  handler({
+    key: "p",
+    preventDefault: () => {},
+  });
+
+  assert.equal(calls.toggleStats, 0);
+  assert.equal(calls.toggleAutoplay, 0);
 });

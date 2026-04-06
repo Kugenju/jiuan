@@ -34,6 +34,7 @@ function createKeyboardHandler(context) {
             return;
           }
         }
+        return;
       }
       if (randomEventStage === "result") {
         if (key === " " || key === "enter") {
@@ -42,10 +43,9 @@ function createKeyboardHandler(context) {
             return;
           }
         }
-        if (key === "arrowleft" || key === "arrowup" || key === "arrowright" || key === "arrowdown") {
-          return;
-        }
+        return;
       }
+      return;
     }
 
     if (key === "i") {

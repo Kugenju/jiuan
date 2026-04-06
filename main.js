@@ -2168,12 +2168,11 @@ function renderRandomEventModal() {
     button.classList.add("random-event-choice");
     button.addEventListener("click", () => {
       runtime.focusedChoiceIndex = index;
-      const choiceId = runtime.pendingEvent?.choices?.[index]?.id;
-      if (!choiceId) {
-        return;
+      const choiceId = button.dataset.randomEventChoice;
+      if (choiceId) {
+        chooseRandomEventOptionForFlowState(state, choiceId, createDayFlowContext());
+        syncUi();
       }
-      chooseRandomEventOptionForFlowState(state, choiceId, createDayFlowContext());
-      syncUi();
     });
   });
 
