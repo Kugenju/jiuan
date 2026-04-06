@@ -27,10 +27,6 @@ function loadScripts(files, { runtime = {}, data = {} } = {}) {
   return context.window;
 }
 
-function realmSafe(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
 function createBaseState() {
   return {
     mode: "resolving",
@@ -115,7 +111,7 @@ test("resolveSlotForFlowState opens a random-event prompt and defers slot comple
     triggerRandomEventForTiming: () => pendingEvent,
   };
   const windowObject = loadScripts(["src/app/day-flow.js"], { runtime });
-  const { resolveSlotForFlowState } = windowObject.GAME_RUNTIME;
+  const { resolveSlotForFlowState, advanceResolvingFlowState } = windowObject.GAME_RUNTIME;
   const rootState = createBaseState();
   const context = {
     slotNames: ["morning"],
@@ -144,6 +140,60 @@ test("resolveSlotForFlowState opens a random-event prompt and defers slot comple
   assert.equal(rootState.randomEventRuntime.stage, "prompt");
   assert.equal(rootState.randomEventRuntime.pendingEvent?.id, "event-1");
   assert.equal(rootState.randomEventRuntime.continuation?.slotIndex, 0);
+
+  const blocked = advanceResolvingFlowState(rootState, context);
+  assert.equal(blocked?.blockedByRandomEvent, true);
+});
+
+test("resolveSlotForFlowState ignores random events without choices", () => {
+  const calls = {
+    pushTimeline: 0,
+  };
+  const pendingEvent = {
+    id: "event-2",
+    title: "Silent moment",
+    body: "No choices here.",
+    speaker: "mystery",
+    slotIndex: 0,
+    activityId: "study",
+    activityKind: "course",
+    activityName: "Study",
+    choices: [],
+    sourceEvent: { id: "event-2", title: "Silent moment", choices: [] },
+  };
+  const runtime = {
+    applyActivityToState: () => "activity notes",
+    getActivitySpeaker: () => "schedule",
+    triggerRandomEventForTiming: () => pendingEvent,
+  };
+  const windowObject = loadScripts(["src/app/day-flow.js"], { runtime });
+  const { resolveSlotForFlowState } = windowObject.GAME_RUNTIME;
+  const rootState = createBaseState();
+  const context = {
+    slotNames: ["morning"],
+    uiText: { speakers: { schedule: "schedule" } },
+    copy: {
+      dayFlowResult: (_slot, _activity, notes) => ({ title: "result", body: notes }),
+    },
+    storyBeats: [],
+    skillLabels: {},
+    getMainFocusSkill: () => "craft",
+    addLog: () => {},
+    pushTimeline: () => {
+      calls.pushTimeline += 1;
+    },
+    randomEvents: [],
+    getActivity: () => ({ id: "study", kind: "course", name: "Study", storySegments: [] }),
+    fallbackActivityId: "homework",
+  };
+
+  const result = resolveSlotForFlowState(rootState, 0, context);
+
+  assert.equal(result?.interruptedByRandomEvent, undefined);
+  assert.equal(calls.pushTimeline, 1);
+  assert.equal(rootState.randomEventRuntime.stage, "idle");
+  assert.equal(rootState.resolvingIndex, 1);
+  assert.equal(rootState.progress, 1);
 });
 
 test("chooseRandomEventOptionForFlowState moves prompt to result without resuming flow", () => {
@@ -219,6 +269,58 @@ test("chooseRandomEventOptionForFlowState moves prompt to result without resumin
   assert.equal(rootState.progress, 0);
   assert.equal(calls.pushTimeline, 0);
   assert.ok(calls.applyEffect > 0);
+});
+
+test("chooseRandomEventOptionForFlowState uses context override for resolution", () => {
+  const runtime = {
+    applyActivityToState: () => "activity notes",
+    getActivitySpeaker: () => "schedule",
+    triggerRandomEventForTiming: () => null,
+  };
+  const windowObject = loadScripts(["src/app/day-flow.js"], { runtime });
+  const { chooseRandomEventOptionForFlowState } = windowObject.GAME_RUNTIME;
+  const rootState = createBaseState();
+  rootState.randomEventRuntime.stage = "prompt";
+  rootState.randomEventRuntime.pendingEvent = {
+    id: "event-override",
+    title: "Override Event",
+    body: "Use override.",
+    speaker: "mystery",
+    slotIndex: 0,
+    activityId: "study",
+    activityKind: "course",
+    activityName: "Study",
+    choices: [{ id: "accept", label: "Accept" }],
+    sourceEvent: { id: "event-override", title: "Override Event", choices: [{ id: "accept", label: "Accept" }] },
+  };
+  rootState.randomEventRuntime.continuation = {
+    slotIndex: 0,
+    activityNotes: "activity notes",
+    activity: { id: "study", kind: "course", name: "Study" },
+  };
+  const context = {
+    slotNames: ["morning"],
+    uiText: { speakers: { schedule: "schedule" } },
+    copy: {
+      dayFlowResult: () => ({ title: "result", body: "body" }),
+    },
+    storyBeats: [],
+    skillLabels: {},
+    getMainFocusSkill: () => "craft",
+    addLog: () => {},
+    pushTimeline: () => {},
+    randomEvents: [],
+    getActivity: () => ({ id: "study", kind: "course", name: "Study", storySegments: [] }),
+    fallbackActivityId: "homework",
+    resolveRandomEventChoice: () => ({ ok: true, notesText: "override note", rewardSummary: "bonus reward" }),
+  };
+
+  const result = chooseRandomEventOptionForFlowState(rootState, "accept", context);
+
+  assert.equal(result?.ok, true);
+  assert.equal(rootState.randomEventRuntime.stage, "result");
+  assert.equal(rootState.randomEventRuntime.resultText, "override note");
+  assert.equal(rootState.randomEventRuntime.rewardSummary, "bonus reward");
 });
 
 test("confirmRandomEventResultForFlowState finalizes slot once and resumes resolving", () => {

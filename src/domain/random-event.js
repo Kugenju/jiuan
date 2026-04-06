@@ -192,8 +192,9 @@ function resolveRandomEventChoice(rootState, pendingEvent, choiceId, activity, c
     }
   }
 
-  if (rewardSummaries.length) {
-    notes.push(`奖励：${rewardSummaries.join("，")}`);
+  const rewardSummary = rewardSummaries.length ? rewardSummaries.join("，") : null;
+  if (rewardSummary) {
+    notes.push(`奖励：${rewardSummary}`);
   }
 
   if (!Array.isArray(rootState.today.randomEvents)) {
@@ -218,6 +219,7 @@ function resolveRandomEventChoice(rootState, pendingEvent, choiceId, activity, c
     eventId: event.id,
     choiceId,
     notesText: notes.join(" "),
+    rewardSummary,
   };
 }
 
