@@ -5,7 +5,7 @@ function createKeyboardHandler(context) {
   return (event) => {
     const key = event.key.toLowerCase();
     const randomEventStage = context.state?.randomEventRuntime?.stage;
-    const randomEventActive = randomEventStage && randomEventStage !== "idle";
+    const randomEventActive = context.state?.mode === "resolving" && randomEventStage && randomEventStage !== "idle";
     if (
       ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) ||
       event.key === " " ||

@@ -28,12 +28,12 @@ function loadScripts(files, { runtime = {}, data = {} } = {}) {
 
 const UI_TEXT = {
   randomEvent: {
-    badge: "Random Event",
-    promptLabel: "Event Prompt",
-    resultLabel: "Event Result",
-    chooseHint: "Choose one.",
-    continueBtn: "Continue",
-    rewardPrefix: "Rewards:",
+    badge: "随机事件",
+    promptLabel: "事件抉择",
+    resultLabel: "事件结果",
+    chooseHint: "请选择一项。",
+    continueBtn: "继续",
+    rewardPrefix: "奖励：",
   },
 };
 
@@ -75,16 +75,16 @@ test("renderRandomEventModalHtml prompt hides rewards and includes choice button
 
   const html = renderRandomEventModalHtml({ runtime: createPromptRuntime(), uiText: UI_TEXT });
 
-  assert.match(html, /Random Event/);
-  assert.match(html, /Event Prompt/);
+  assert.match(html, /随机事件/);
+  assert.match(html, /事件抉择/);
   assert.match(html, /A note/);
   assert.match(html, /You find a note\./);
-  assert.match(html, /Choose one\./);
+  assert.match(html, /请选择一项/);
   assert.match(html, /Accept/);
   assert.match(html, /Ignore/);
   assert.match(html, /choice-card active/);
-  assert.doesNotMatch(html, /Rewards/);
-  assert.doesNotMatch(html, /Continue/);
+  assert.doesNotMatch(html, /奖励/);
+  assert.doesNotMatch(html, /继续/);
 });
 
 test("renderRandomEventModalHtml result shows reward summary and continue button", () => {
@@ -93,12 +93,12 @@ test("renderRandomEventModalHtml result shows reward summary and continue button
 
   const html = renderRandomEventModalHtml({ runtime: createResultRuntime(), uiText: UI_TEXT });
 
-  assert.match(html, /Event Result/);
+  assert.match(html, /事件结果/);
   assert.match(html, /A note/);
   assert.match(html, /You accept\./);
-  assert.match(html, /Rewards/);
+  assert.match(html, /奖励/);
   assert.match(html, /Insight \+1/);
-  assert.match(html, /Continue/);
+  assert.match(html, /继续/);
 });
 
 test("renderRandomEventModalHtml returns empty string for idle stage", () => {
@@ -111,6 +111,29 @@ test("renderRandomEventModalHtml returns empty string for idle stage", () => {
   });
 
   assert.equal(html, "");
+});
+
+test("renderRandomEventModalHtml escapes interpolated text", () => {
+  const windowObject = loadScripts(["src/app/random-event-view.js"]);
+  const { renderRandomEventModalHtml } = windowObject.GAME_RUNTIME;
+  const runtime = {
+    stage: "prompt",
+    focusedChoiceIndex: 0,
+    pendingEvent: {
+      title: "<strong>Title</strong>",
+      body: "Body & more",
+      choices: [
+        { id: "a\"b", label: "<Click>" },
+      ],
+    },
+  };
+
+  const html = renderRandomEventModalHtml({ runtime, uiText: UI_TEXT });
+
+  assert.match(html, /&lt;strong&gt;Title&lt;\/strong&gt;/);
+  assert.match(html, /Body &amp; more/);
+  assert.match(html, /&lt;Click&gt;/);
+  assert.match(html, /data-random-event-choice=\"a&quot;b\"/);
 });
 
 test("keyboard handler routes resolving keys to random-event modal", () => {
@@ -188,4 +211,47 @@ test("keyboard handler falls back when random-event hook is missing", () => {
   });
 
   assert.equal(calls.advance, 1);
+});
+
+test("keyboard handler does not route random-event keys outside resolving mode", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    focus: 0,
+    activate: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "planning",
+      randomEventRuntime: {
+        stage: "prompt",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    setSlot: () => {},
+    cycleSelectedActivity: () => {},
+    assignActivity: () => {},
+    startDay: () => {},
+    focusRandomEventChoice: () => {
+      calls.focus += 1;
+    },
+    activateRandomEventChoice: () => {
+      calls.activate += 1;
+    },
+  });
+
+  handler({
+    key: "ArrowRight",
+    preventDefault: () => {},
+  });
+
+  handler({
+    key: "Enter",
+    preventDefault: () => {},
+  });
+
+  assert.equal(calls.focus, 0);
+  assert.equal(calls.activate, 0);
 });

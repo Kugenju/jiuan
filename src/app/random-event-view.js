@@ -1,6 +1,19 @@
 (() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+
 function renderRandomEventModalHtml(input = {}) {
   const runtime = input.runtime || input.randomEventRuntime || {};
   const uiText = input.uiText || {};
@@ -11,14 +24,14 @@ function renderRandomEventModalHtml(input = {}) {
 
   const randomEventText = uiText.randomEvent || {};
   const pendingEvent = runtime?.pendingEvent || {};
-  const title = pendingEvent.title || "";
-  const body = pendingEvent.body || "";
-  const badge = randomEventText.badge || "";
-  const promptLabel = randomEventText.promptLabel || "";
-  const resultLabel = randomEventText.resultLabel || "";
-  const chooseHint = randomEventText.chooseHint || "";
-  const continueBtn = randomEventText.continueBtn || "";
-  const rewardPrefix = randomEventText.rewardPrefix || "";
+  const title = escapeHtml(pendingEvent.title || "");
+  const body = escapeHtml(pendingEvent.body || "");
+  const badge = escapeHtml(randomEventText.badge || "");
+  const promptLabel = escapeHtml(randomEventText.promptLabel || "");
+  const resultLabel = escapeHtml(randomEventText.resultLabel || "");
+  const chooseHint = escapeHtml(randomEventText.chooseHint || "");
+  const continueBtn = escapeHtml(randomEventText.continueBtn || "");
+  const rewardPrefix = escapeHtml(randomEventText.rewardPrefix || "");
 
   const badgeMarkup = badge ? `<span class="badge">${badge}</span>` : "";
 
@@ -29,10 +42,10 @@ function renderRandomEventModalHtml(input = {}) {
         (choice, index) => `
           <button
             class="choice-card ${index === runtime.focusedChoiceIndex ? "active" : ""}"
-            ${choice?.id ? `data-random-event-choice="${choice.id}"` : ""}
+            ${choice?.id ? `data-random-event-choice="${escapeAttr(choice.id)}"` : ""}
             type="button"
           >
-            <strong>${choice.label || ""}</strong>
+            <strong>${escapeHtml(choice.label || "")}</strong>
           </button>
         `
       )
@@ -59,8 +72,8 @@ function renderRandomEventModalHtml(input = {}) {
   }
 
   if (stage === "result") {
-    const resultText = runtime.resultText || "";
-    const rewardSummary = runtime.rewardSummary || "";
+    const resultText = escapeHtml(runtime.resultText || "");
+    const rewardSummary = escapeHtml(runtime.rewardSummary || "");
     const rewardBlock = rewardSummary
       ? `
         <div class="story-card">
