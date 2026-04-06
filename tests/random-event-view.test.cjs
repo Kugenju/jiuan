@@ -77,6 +77,8 @@ test("renderRandomEventModalHtml prompt hides rewards and includes choice button
 
   assert.match(html, /随机事件/);
   assert.match(html, /事件抉择/);
+  assert.match(html, /random-event-seal/);
+  assert.match(html, /random-event-copy/);
   assert.match(html, /A note/);
   assert.match(html, /You find a note\./);
   assert.match(html, /请选择一项/);
@@ -95,6 +97,7 @@ test("renderRandomEventModalHtml result shows reward summary and continue button
 
   assert.match(html, /事件结果/);
   assert.match(html, /A note/);
+  assert.match(html, /random-event-result/);
   assert.match(html, /You accept\./);
   assert.match(html, /奖励/);
   assert.match(html, /Insight \+1/);

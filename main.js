@@ -157,6 +157,11 @@ const CANVAS_THEME = {
   sceneSilhouette: "rgba(117,101,72,0.12)",
   sceneMist: "rgba(69,107,109,0.08)",
   sunGlow: "rgba(199,164,90,0.18)",
+  courtyardMist: "rgba(255,250,241,0.3)",
+  screenLine: "rgba(122,98,66,0.2)",
+  roofShadow: "rgba(88,67,44,0.2)",
+  roofEdge: "rgba(123,94,58,0.44)",
+  floorGlow: "rgba(255,247,231,0.46)",
 };
 
 function createRng(seed = 20260313) {
@@ -1883,43 +1888,153 @@ function drawAcademyBackdrop(topColor, bottomColor) {
   gradient.addColorStop(1, bottomColor);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawCourtyardFrame();
+  drawRoofline();
+  drawLatticeScreen();
+  ctx.save();
   ctx.fillStyle = CANVAS_THEME.sceneSilhouette;
-  for (let i = 0; i < 9; i += 1) {
-    const height = 120 + (i % 4) * 48;
-    ctx.fillRect(i * 120, canvas.height - height, 90, height);
+  for (let i = 0; i < 7; i += 1) {
+    const x = 70 + i * 126;
+    const width = 72 + (i % 2) * 24;
+    const height = 120 + ((i + 1) % 4) * 44;
+    ctx.fillRect(x, canvas.height - height - 18, width, height);
   }
   ctx.fillStyle = CANVAS_THEME.sunGlow;
   ctx.beginPath();
-  ctx.arc(canvas.width - 180, 110, 56, 0, Math.PI * 2);
+  ctx.arc(canvas.width - 192, 114, 58, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = CANVAS_THEME.sceneMist;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+function drawCourtyardFrame() {
+  ctx.save();
+  const horizon = canvas.height * 0.58;
+  const floorGradient = ctx.createLinearGradient(0, horizon, 0, canvas.height);
+  floorGradient.addColorStop(0, "rgba(233,224,202,0.14)");
+  floorGradient.addColorStop(0.34, "rgba(233,224,202,0.44)");
+  floorGradient.addColorStop(1, CANVAS_THEME.floorGlow);
+  ctx.fillStyle = floorGradient;
+  ctx.fillRect(0, horizon, canvas.width, canvas.height - horizon);
+
+  ctx.fillStyle = CANVAS_THEME.courtyardMist;
+  ctx.fillRect(60, 126, canvas.width - 120, 236);
+  ctx.fillStyle = "rgba(255,250,242,0.52)";
+  ctx.fillRect(84, 148, canvas.width - 168, 44);
+
+  ctx.strokeStyle = CANVAS_THEME.screenLine;
+  ctx.lineWidth = 1;
+  for (let index = 0; index < 10; index += 1) {
+    const lineY = horizon + 18 + index * 20;
+    ctx.beginPath();
+    ctx.moveTo(56, lineY);
+    ctx.lineTo(canvas.width - 56, lineY - 8);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = CANVAS_THEME.roofShadow;
+  ctx.fillRect(66, 118, 18, 284);
+  ctx.fillRect(canvas.width - 84, 118, 18, 284);
+  ctx.fillRect(canvas.width * 0.5 - 12, 170, 24, 232);
+  ctx.restore();
+}
+
+function drawRoofline() {
+  ctx.save();
+  ctx.fillStyle = CANVAS_THEME.roofShadow;
+  ctx.beginPath();
+  ctx.moveTo(0, 104);
+  ctx.lineTo(120, 78);
+  ctx.lineTo(canvas.width * 0.5, 62);
+  ctx.lineTo(canvas.width - 120, 78);
+  ctx.lineTo(canvas.width, 104);
+  ctx.lineTo(canvas.width, 134);
+  ctx.lineTo(0, 134);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = CANVAS_THEME.roofEdge;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(22, 108);
+  ctx.lineTo(152, 84);
+  ctx.lineTo(canvas.width * 0.5, 68);
+  ctx.lineTo(canvas.width - 152, 84);
+  ctx.lineTo(canvas.width - 22, 108);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLatticeScreen() {
+  ctx.save();
+  const frameX = 94;
+  const frameY = 142;
+  const frameWidth = canvas.width - 188;
+  const frameHeight = 220;
+  ctx.strokeStyle = CANVAS_THEME.screenLine;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(frameX, frameY, frameWidth, frameHeight);
+
+  for (let index = 1; index < 5; index += 1) {
+    const x = frameX + (frameWidth / 5) * index;
+    ctx.beginPath();
+    ctx.moveTo(x, frameY);
+    ctx.lineTo(x, frameY + frameHeight);
+    ctx.stroke();
+  }
+
+  for (let index = 1; index < 4; index += 1) {
+    const y = frameY + (frameHeight / 4) * index;
+    ctx.beginPath();
+    ctx.moveTo(frameX, y);
+    ctx.lineTo(frameX + frameWidth, y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawBanner(title, subtitle) {
+  ctx.save();
   ctx.fillStyle = CANVAS_THEME.bannerFill;
-  ctx.fillRect(44, 36, 872, 112);
+  ctx.fillRect(48, 34, 860, 118);
   ctx.strokeStyle = CANVAS_THEME.bannerStroke;
-  ctx.strokeRect(44, 36, 872, 112);
+  ctx.strokeRect(48, 34, 860, 118);
+  ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
+  ctx.strokeRect(64, 48, 828, 90);
+  ctx.fillStyle = CANVAS_THEME.accentGoldSoft;
+  ctx.fillRect(816, 54, 56, 26);
   ctx.fillStyle = CANVAS_THEME.bannerTitle;
   ctx.font = "42px 'STZhongsong', 'Microsoft YaHei'";
-  ctx.fillText(title, 72, 90);
+  ctx.fillText(title, 74, 92);
   ctx.font = "18px 'Microsoft YaHei'";
   ctx.fillStyle = CANVAS_THEME.bannerSubtitle;
-  ctx.fillText(subtitle, 72, 124);
+  ctx.fillText(subtitle, 74, 124);
+  ctx.restore();
 }
 
 function drawFloatingCards(labels, y) {
   labels.forEach((label, index) => {
-    const x = 110 + index * 190 + Math.sin(state.scenePulse + index) * 10;
-    const offsetY = y + Math.cos(state.scenePulse * 1.2 + index) * 8;
-    ctx.fillStyle = CANVAS_THEME.panelFill;
-    ctx.fillRect(x, offsetY, 160, 90);
-    ctx.strokeStyle = CANVAS_THEME.panelStroke;
-    ctx.strokeRect(x, offsetY, 160, 90);
+    const x = 116 + index * 176 + Math.sin(state.scenePulse + index) * 8;
+    const offsetY = y + Math.cos(state.scenePulse * 1.1 + index) * 6;
+    ctx.save();
+    ctx.strokeStyle = CANVAS_THEME.screenLine;
+    ctx.beginPath();
+    ctx.moveTo(x + 28, offsetY - 28);
+    ctx.lineTo(x + 28, offsetY);
+    ctx.moveTo(x + 132, offsetY - 28);
+    ctx.lineTo(x + 132, offsetY);
+    ctx.stroke();
+    ctx.fillStyle = CANVAS_THEME.panelFillStrong;
+    ctx.fillRect(x, offsetY, 160, 84);
+    ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
+    ctx.strokeRect(x, offsetY, 160, 84);
+    ctx.fillStyle = CANVAS_THEME.accentDaiqingSoft;
+    ctx.fillRect(x + 10, offsetY + 10, 140, 10);
     ctx.fillStyle = CANVAS_THEME.panelText;
-    ctx.font = "22px 'Microsoft YaHei'";
-    ctx.fillText(label, x + 22, offsetY + 52);
+    ctx.font = "21px 'Microsoft YaHei'";
+    ctx.fillText(label, x + 24, offsetY + 52);
+    ctx.restore();
   });
 }
 
@@ -1939,6 +2054,8 @@ function drawTimelineStrip() {
       ctx.fillStyle = CANVAS_THEME.slotSelectedFill;
     }
     ctx.fillRect(x, y, cardWidth, 54);
+    ctx.fillStyle = index === state.selectedSlot && state.mode === "planning" ? CANVAS_THEME.accentDaiqing : CANVAS_THEME.accentGold;
+    ctx.fillRect(x + 12, y + 8, cardWidth - 24, 4);
     ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.font = `${SLOT_NAMES.length > 5 ? 16 : 18}px 'Microsoft YaHei'`;
     ctx.fillText(name, x + 16, y + 24);
@@ -2154,10 +2271,12 @@ function renderRandomEventModal() {
   const runtime = getRandomEventRuntime();
   const stage = runtime?.stage;
   if (!stage || stage === "idle") {
+    infoModal.classList.remove("overlay-modal-random-event");
     return false;
   }
 
   infoModal.classList.remove("overlay-modal-timetable");
+  infoModal.classList.add("overlay-modal-random-event");
   infoModal.innerHTML = window.GAME_RUNTIME.renderRandomEventModalHtml({
     runtime,
     uiText: UI_TEXT,
@@ -2202,6 +2321,7 @@ function syncUi() {
     state.ui.infoModal = null;
   }
   if (!randomEventOpen) {
+    infoModal.classList.remove("overlay-modal-random-event");
     renderInfoModal();
   }
   topPanel.classList.toggle("hidden", !state.ui.statsOpen);

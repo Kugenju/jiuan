@@ -17,6 +17,9 @@ test("main canvas defines a classical theme token set", () => {
   expectContains("panelFill:", "missing canvas panelFill token");
   expectContains("accentDaiqing:", "missing canvas accentDaiqing token");
   expectContains("accentGold:", "missing canvas accentGold token");
+  expectContains("courtyardMist:", "missing courtyardMist token");
+  expectContains("screenLine:", "missing screenLine token");
+  expectContains("roofShadow:", "missing roofShadow token");
 });
 
 test("drawBackground uses the classical canvas theme instead of hardcoded dark colors", () => {
@@ -30,4 +33,10 @@ test("drawBanner and timeline strip use the classical panel palette", () => {
   expectContains('ctx.strokeStyle = CANVAS_THEME.bannerStroke;', "drawBanner should use paper banner stroke");
   expectContains('ctx.fillStyle = CANVAS_THEME.slotIdleFill;', "timeline should use classical idle fill");
   expectContains('ctx.fillStyle = CANVAS_THEME.slotSelectedFill;', "timeline should use classical selected fill");
+});
+
+test("academy backdrop layers in courtyard framing helpers", () => {
+  expectContains("drawCourtyardFrame();", "drawAcademyBackdrop should call drawCourtyardFrame");
+  expectContains("drawRoofline();", "drawAcademyBackdrop should call drawRoofline");
+  expectContains("drawLatticeScreen();", "drawAcademyBackdrop should call drawLatticeScreen");
 });

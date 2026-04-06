@@ -33,7 +33,7 @@ function renderRandomEventModalHtml(input = {}) {
   const continueBtn = escapeHtml(randomEventText.continueBtn || "");
   const rewardPrefix = escapeHtml(randomEventText.rewardPrefix || "");
 
-  const badgeMarkup = badge ? `<span class="badge">${badge}</span>` : "";
+  const badgeMarkup = badge ? `<span class="random-event-seal">${badge}</span>` : "";
 
   if (stage === "prompt") {
     const choices = Array.isArray(pendingEvent.choices) ? pendingEvent.choices : [];
@@ -46,6 +46,7 @@ function renderRandomEventModalHtml(input = {}) {
             type="button"
           >
             <strong>${escapeHtml(choice.label || "")}</strong>
+            <small class="random-event-choice-copy">${escapeHtml(randomEventText.choiceCopy || "")}</small>
           </button>
         `
       )
@@ -54,17 +55,17 @@ function renderRandomEventModalHtml(input = {}) {
     return `
       <div class="random-event-modal">
         <div class="panel-title">
-          <h2>${promptLabel || title}</h2>
           ${badgeMarkup}
+          <h2>${promptLabel || title}</h2>
         </div>
-        <div class="story-card">
+        <div class="story-card random-event-copy">
           <strong>${title}</strong>
           <small>${body}</small>
         </div>
-        <div class="story-card">
+        <div class="random-event-divider">
           <small>${chooseHint}</small>
         </div>
-        <div class="choice-grid">
+        <div class="choice-grid random-event-choice-grid">
           ${choiceButtons}
         </div>
       </div>
@@ -84,7 +85,7 @@ function renderRandomEventModalHtml(input = {}) {
     const rewardSummary = escapeHtml(rawRewardSummary || "");
     const rewardBlock = rewardSummary
       ? `
-        <div class="story-card">
+        <div class="story-card random-event-reward">
           <strong>${rewardPrefix}</strong>
           <small>${rewardSummary}</small>
         </div>
@@ -94,10 +95,10 @@ function renderRandomEventModalHtml(input = {}) {
     return `
       <div class="random-event-modal">
         <div class="panel-title">
-          <h2>${resultLabel || title}</h2>
           ${badgeMarkup}
+          <h2>${resultLabel || title}</h2>
         </div>
-        <div class="story-card">
+        <div class="story-card random-event-copy random-event-result">
           <strong>${title}</strong>
           <small>${resultText || body}</small>
         </div>

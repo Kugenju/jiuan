@@ -122,6 +122,8 @@ test("#game-canvas embraces the paper panel surface", () => {
   const gameCanvasBlock = getBlock(escapeRegExp("#game-canvas"));
   assert.match(gameCanvasBlock, /border:\s*1px solid var\(--line-soft\);/);
   assert.match(gameCanvasBlock, /background:\s*var\(--paper-panel-strong\);/);
+  assert.match(gameCanvasBlock, /position:\s*relative;/);
+  assert.match(gameCanvasBlock, /overflow:\s*hidden;/);
 });
 
 test("hint and quick cards use the paper surface treatment", () => {
@@ -265,10 +267,50 @@ test("mobile views reinforce contours on key cards with the classical scheme", (
 test("random-event modal and choices use the classical paper styling", () => {
   const modalBlock = getBlock(escapeRegExp(".random-event-modal"));
   assert.match(modalBlock, /display:\s*grid;/);
-  assert.match(modalBlock, /gap:\s*12px;/);
+  assert.match(modalBlock, /gap:\s*16px;/);
+  assert.match(modalBlock, /padding:\s*8px;/);
+  assert.match(modalBlock, /background:\s*linear-gradient\(180deg,\s*rgba\(255,\s*251,\s*243,\s*0\.94\),\s*rgba\(246,\s*238,\s*221,\s*0\.92\)\);/);
 
   const choiceBlock = getBlock(escapeRegExp(".random-event-choice"));
-  assert.match(choiceBlock, /border:\s*1px solid var\(--line-soft\);/);
-  assert.match(choiceBlock, /background:\s*var\(--paper-panel\);/);
+  assert.match(choiceBlock, /border:\s*1px solid rgba\(168,\s*142,\s*112,\s*0\.4\);/);
+  assert.match(choiceBlock, /background:\s*linear-gradient\(180deg,\s*rgba\(253,\s*249,\s*239,\s*0\.96\),\s*rgba\(242,\s*233,\s*216,\s*0\.92\)\);/);
   assert.match(choiceBlock, /color:\s*var\(--ink-strong\);/);
+});
+
+test("main panel action rows use the same seal-and-scroll treatment", () => {
+  const actionBlock = getBlock(escapeRegExp("#main-panel .action-row"));
+  assert.match(actionBlock, /padding-top:\s*14px;/);
+  assert.match(actionBlock, /border-top:\s*1px solid rgba\(168,\s*142,\s*112,\s*0\.28\);/);
+});
+
+test("night academy mode darkens the shell while keeping layered classical surfaces", () => {
+  const memoryStageNightBlock = getBlock(escapeRegExp("body.memory-mode .memory-stage"));
+  assert.match(
+    memoryStageNightBlock,
+    /background:\s*linear-gradient\(160deg,\s*rgba\(25,\s*27,\s*34,\s*0\.96\)\s*0%,\s*rgba\(14,\s*17,\s*24,\s*0\.98\)\s*56%,\s*rgba\(8,\s*10,\s*15,\s*0\.99\)\s*100%\);/
+  );
+  assert.match(memoryStageNightBlock, /border:\s*1px solid rgba\(199,\s*164,\s*90,\s*0\.16\);/);
+
+  const nightPanelBlock = getBlock(escapeRegExp("body.memory-mode #main-panel"));
+  assert.match(nightPanelBlock, /background:\s*linear-gradient\(180deg,\s*rgba\(27,\s*25,\s*28,\s*0\.94\),\s*rgba\(15,\s*16,\s*21,\s*0\.96\)\);/);
+  assert.match(nightPanelBlock, /border-color:\s*rgba\(199,\s*164,\s*90,\s*0\.14\);/);
+});
+
+test("night academy memory board trades sci-fi blues for lamp-lit ink and gold", () => {
+  const nightHexBlock = getBlock(escapeRegExp("body.memory-mode .memory-hex-board"));
+  assert.match(
+    nightHexBlock,
+    /background:[\s\S]*?radial-gradient\(circle at 50% 14%, rgba\(214,\s*188,\s*126,\s*0\.12\), transparent 24%\),[\s\S]*?linear-gradient\(180deg,\s*rgba\(19,\s*24,\s*29,\s*0\.96\)\s*0%,\s*rgba\(8,\s*11,\s*15,\s*0\.98\)\s*100%\);/
+  );
+  assert.match(
+    nightHexBlock,
+    /box-shadow:[\s\S]*?0\s*26px\s*54px\s*rgba\(0,\s*0,\s*0,\s*0\.34\),[\s\S]*?inset 0 0 0 1px rgba\(199,\s*164,\s*90,\s*0\.08\);/
+  );
+
+  const fragmentNightBlock = getBlock(escapeRegExp("body.memory-mode #main-panel .memory-fragment-field"));
+  assert.match(fragmentNightBlock, /border:\s*1px solid rgba\(199,\s*164,\s*90,\s*0\.14\);/);
+  assert.match(
+    fragmentNightBlock,
+    /background:[\s\S]*?radial-gradient\(circle at 24% 20%, rgba\(214,\s*188,\s*126,\s*0\.1\), transparent 24%\),[\s\S]*?rgba\(20,\s*22,\s*28,\s*0\.82\);/
+  );
 });

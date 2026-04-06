@@ -95,10 +95,12 @@ body::before {
 }
 
 #game-canvas {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
   display: block;
+  overflow: hidden;
   border-radius: 28px;
   border: 1px solid var(--line-soft);
   background: var(--paper-panel-strong);
@@ -751,21 +753,89 @@ body::before {
   --node-accent-rgb: 195, 167, 255;
 }
 
+body.memory-mode {
+  color: #e7dcc8;
+  background: linear-gradient(180deg, #17181d 0%, #0d1016 100%);
+}
+
+body.memory-mode::before {
+  opacity: 0.82;
+  background:
+    radial-gradient(circle at 24% 38%, rgba(214, 188, 126, 0.16), transparent 24%),
+    radial-gradient(circle at 74% 16%, rgba(91, 123, 121, 0.16), transparent 22%),
+    repeating-linear-gradient(0deg, rgba(255, 251, 243, 0.018) 0 1px, transparent 1px 14px),
+    linear-gradient(180deg, rgba(7, 9, 14, 0.18), rgba(4, 6, 10, 0.74));
+}
+
+body.memory-mode .tip-strip {
+  background: linear-gradient(180deg, rgba(32, 30, 32, 0.88), rgba(18, 19, 24, 0.92));
+  border-color: rgba(199, 164, 90, 0.18);
+  color: rgba(231, 220, 200, 0.82);
+}
+
+body.memory-mode .ghost-button {
+  background: rgba(248, 239, 223, 0.08);
+  border-color: rgba(199, 164, 90, 0.18);
+  color: #e6d8c2;
+}
+
+body.memory-mode .stage-panel {
+  position: relative;
+  isolation: isolate;
+}
+
+body.memory-mode .stage-panel::before {
+  content: "";
+  position: absolute;
+  inset: 54px 8px 0;
+  border-radius: 32px;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 42% 34%, rgba(234, 214, 179, 0.18), transparent 28%),
+    radial-gradient(circle at 38% 62%, rgba(234, 214, 179, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 247, 229, 0.04), rgba(255, 247, 229, 0));
+}
+
+body.memory-mode .stage-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
 body.memory-mode .memory-stage {
   padding: 16px;
+  border: 1px solid rgba(199, 164, 90, 0.16);
+  background: linear-gradient(160deg, rgba(25, 27, 34, 0.96) 0%, rgba(14, 17, 24, 0.98) 56%, rgba(8, 10, 15, 0.99) 100%);
+  box-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(91, 123, 121, 0.08),
+    inset 0 18px 32px rgba(255, 244, 220, 0.03);
 }
 
 body.memory-mode .memory-stage-shell {
   gap: 12px;
 }
 
+body.memory-mode .memory-stage-header h2 {
+  color: #f0e3cb;
+}
+
 body.memory-mode .memory-hex-board {
   min-height: 460px;
+  border: 1px solid rgba(199, 164, 90, 0.18);
+  background:
+    radial-gradient(circle at 50% 14%, rgba(214, 188, 126, 0.12), transparent 24%),
+    radial-gradient(circle at 26% 30%, rgba(86, 117, 114, 0.16), transparent 26%),
+    linear-gradient(180deg, rgba(19, 24, 29, 0.96) 0%, rgba(8, 11, 15, 0.98) 100%);
+  box-shadow:
+    0 26px 54px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(199, 164, 90, 0.08);
 }
 
 body.memory-mode .memory-node {
   width: clamp(28px, 2.5vw, 32px);
   height: clamp(28px, 2.5vw, 32px);
+  background: rgba(16, 18, 24, 0.94);
 }
 
 body.memory-mode .memory-node-tooltip strong {
@@ -778,8 +848,35 @@ body.memory-mode .memory-zone-chip {
   font-size: 11px;
 }
 
+body.memory-mode .memory-stage-header p,
+body.memory-mode .memory-zone-chip,
+body.memory-mode .memory-node-tooltip small {
+  color: rgba(223, 212, 194, 0.74);
+}
+
+body.memory-mode .memory-zone-chip {
+  border-color: rgba(199, 164, 90, 0.14);
+  background: rgba(248, 240, 223, 0.05);
+}
+
+body.memory-mode .memory-edge {
+  border-color: rgba(199, 164, 90, 0.22);
+  background: rgba(14, 16, 22, 0.9);
+  color: rgba(229, 217, 198, 0.68);
+}
+
+body.memory-mode .memory-node-tooltip {
+  border-color: rgba(199, 164, 90, 0.14);
+  background: rgba(11, 13, 18, 0.94);
+}
+
 body.memory-mode #main-panel {
   padding: 18px;
+  background: linear-gradient(180deg, rgba(27, 25, 28, 0.94), rgba(15, 16, 21, 0.96));
+  border-color: rgba(199, 164, 90, 0.14);
+  box-shadow:
+    0 26px 58px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 248, 232, 0.04);
 }
 
 body.memory-mode #main-panel .selection-summary {
@@ -791,10 +888,20 @@ body.memory-mode #main-panel .memory-token {
   min-height: 68px;
   padding: 10px 12px;
   border-radius: 16px;
+  border-color: rgba(199, 164, 90, 0.12);
+  background: rgba(255, 249, 236, 0.05);
 }
 
 body.memory-mode #main-panel .memory-fragment-field {
   min-height: 292px;
+  border: 1px solid rgba(199, 164, 90, 0.14);
+  background:
+    radial-gradient(circle at 24% 20%, rgba(214, 188, 126, 0.1), transparent 24%),
+    radial-gradient(circle at 76% 28%, rgba(91, 123, 121, 0.12), transparent 22%),
+    rgba(20, 22, 28, 0.82);
+  box-shadow:
+    0 22px 44px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 245, 227, 0.04);
 }
 
 body.memory-mode #main-panel .memory-token strong,
@@ -810,10 +917,14 @@ body.memory-mode #main-panel .tiny {
 
 body.memory-mode #main-panel .story-card {
   padding: 12px;
+  border-color: rgba(199, 164, 90, 0.12);
+  background: rgba(255, 250, 238, 0.045);
 }
 
 body.memory-mode .stage-status-grid .panel-card {
   padding: 14px;
+  background: linear-gradient(180deg, rgba(26, 24, 29, 0.88), rgba(16, 17, 22, 0.92));
+  border-color: rgba(199, 164, 90, 0.12);
 }
 
 body.memory-mode .feedback-list {
@@ -1149,6 +1260,18 @@ button {
 
 #main-panel .action-row {
   margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(168, 142, 112, 0.28);
+}
+
+#main-panel .action-row button {
+  min-width: 120px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 10px 22px rgba(124, 95, 58, 0.12);
+}
+
+#main-panel .action-row button.primary {
+  box-shadow: 0 12px 26px rgba(69, 107, 109, 0.16);
 }
 
 .flow-shell {
@@ -1662,6 +1785,10 @@ button {
   z-index: 22;
 }
 
+.overlay-modal.overlay-modal-random-event {
+  width: min(640px, calc(100vw - 24px));
+}
+
 .overlay-modal.overlay-modal-timetable {
   width: min(920px, calc(100vw - 24px));
 }
@@ -1710,13 +1837,75 @@ button {
 
 .random-event-modal {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(255, 251, 243, 0.94), rgba(246, 238, 221, 0.92));
 }
 
 .random-event-choice {
-  border: 1px solid var(--line-soft);
-  background: var(--paper-panel);
+  border: 1px solid rgba(168, 142, 112, 0.4);
+  background: linear-gradient(180deg, rgba(253, 249, 239, 0.96), rgba(242, 233, 216, 0.92));
   color: var(--ink-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.random-event-modal .panel-title {
+  margin-bottom: 0;
+  align-items: start;
+}
+
+.random-event-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 164, 90, 0.45);
+  background: rgba(199, 164, 90, 0.14);
+  color: var(--accent-gold-soft);
+  box-shadow: 0 8px 20px rgba(199, 164, 90, 0.18);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.random-event-copy,
+.random-event-result,
+.random-event-reward {
+  position: relative;
+  overflow: hidden;
+}
+
+.random-event-copy::before,
+.random-event-result::before,
+.random-event-reward::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, rgba(199, 164, 90, 0.6), rgba(69, 107, 109, 0.3));
+}
+
+.random-event-divider {
+  padding: 10px 14px 0;
+  border-top: 1px solid rgba(168, 142, 112, 0.28);
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.random-event-choice-grid {
+  gap: 12px;
+}
+
+.random-event-choice strong {
+  font-size: 17px;
+  letter-spacing: 0.03em;
+}
+
+.random-event-choice-copy {
+  margin-top: 6px;
+  color: var(--muted);
 }
 
 .drawer-close {
