@@ -61,6 +61,9 @@ const {
   startDayFlow,
   advanceResolvingFlowState,
   toggleResolvingAutoplayOnState,
+  createRandomEventRuntimeState,
+  chooseRandomEventOptionForFlowState,
+  confirmRandomEventResultForFlowState,
   findDayModifier,
   storyBeatMatchesState,
   triggerStoryBeatForActivity,
@@ -1155,8 +1158,80 @@ function toggleResolvingAutoplay(force) {
   syncUi();
 }
 
+function getRandomEventRuntime() {
+  if (!state.randomEventRuntime || typeof state.randomEventRuntime !== "object") {
+    state.randomEventRuntime =
+      typeof createRandomEventRuntimeState === "function"
+        ? createRandomEventRuntimeState()
+        : { stage: "idle" };
+  }
+  return state.randomEventRuntime;
+}
+
+function isRandomEventActive() {
+  const stage = state.randomEventRuntime?.stage;
+  return state.mode === "resolving" && stage && stage !== "idle";
+}
+
+function focusRandomEventChoice(delta = 1) {
+  const runtime = getRandomEventRuntime();
+  if (runtime.stage !== "prompt") {
+    return false;
+  }
+  const choices = Array.isArray(runtime.pendingEvent?.choices) ? runtime.pendingEvent.choices : [];
+  if (!choices.length) {
+    return false;
+  }
+  const currentIndex = Number.isInteger(runtime.focusedChoiceIndex) ? runtime.focusedChoiceIndex : 0;
+  const nextIndex = (currentIndex + delta + choices.length) % choices.length;
+  runtime.focusedChoiceIndex = nextIndex;
+  syncUi();
+  const buttons = infoModal.querySelectorAll("[data-random-event-choice]");
+  const target = buttons[nextIndex];
+  if (target) {
+    target.focus();
+  }
+  return true;
+}
+
+function activateRandomEventChoice() {
+  const runtime = getRandomEventRuntime();
+  if (runtime.stage !== "prompt") {
+    return false;
+  }
+  const choices = Array.isArray(runtime.pendingEvent?.choices) ? runtime.pendingEvent.choices : [];
+  if (!choices.length) {
+    return false;
+  }
+  const currentIndex = Number.isInteger(runtime.focusedChoiceIndex) ? runtime.focusedChoiceIndex : 0;
+  const choiceId = choices[currentIndex]?.id;
+  if (!choiceId) {
+    return false;
+  }
+  const result = chooseRandomEventOptionForFlowState(state, choiceId, createDayFlowContext());
+  if (result?.ok) {
+    syncUi();
+  }
+  return Boolean(result?.ok);
+}
+
+function confirmRandomEventResult() {
+  const runtime = getRandomEventRuntime();
+  if (runtime.stage !== "result") {
+    return false;
+  }
+  const result = confirmRandomEventResultForFlowState(state, createDayFlowContext());
+  if (result?.ok) {
+    syncUi();
+  }
+  return Boolean(result?.ok);
+}
+
 function update(dt) {
   state.scenePulse += dt;
+  if (isRandomEventActive()) {
+    return;
+  }
   if (state.mode !== "resolving" || !state.resolvingFlow.autoplay) {
     return;
   }
@@ -2075,6 +2150,46 @@ function renderInfoModal() {
   }
 }
 
+function renderRandomEventModal() {
+  const runtime = getRandomEventRuntime();
+  const stage = runtime?.stage;
+  if (!stage || stage === "idle") {
+    return false;
+  }
+
+  infoModal.classList.remove("overlay-modal-timetable");
+  infoModal.innerHTML = window.GAME_RUNTIME.renderRandomEventModalHtml({
+    runtime,
+    uiText: UI_TEXT,
+  });
+
+  const choiceButtons = infoModal.querySelectorAll("[data-random-event-choice]");
+  choiceButtons.forEach((button, index) => {
+    button.classList.add("random-event-choice");
+    button.addEventListener("click", () => {
+      runtime.focusedChoiceIndex = index;
+      const choiceId = runtime.pendingEvent?.choices?.[index]?.id;
+      if (!choiceId) {
+        return;
+      }
+      chooseRandomEventOptionForFlowState(state, choiceId, createDayFlowContext());
+      syncUi();
+    });
+  });
+
+  const continueBtn = infoModal.querySelector("#random-event-continue-btn");
+  if (continueBtn) {
+    continueBtn.addEventListener("click", confirmRandomEventResult);
+  }
+
+  const activeButton = choiceButtons[runtime.focusedChoiceIndex];
+  if (activeButton && stage === "prompt") {
+    activeButton.focus();
+  }
+
+  return true;
+}
+
 function syncUi() {
   renderLeftPanel();
   renderTopPanel();
@@ -2082,10 +2197,13 @@ function syncUi() {
   renderMainPanel();
   renderLogPanel();
   renderMemoryStage();
-  renderInfoModal();
+  const randomEventOpen = renderRandomEventModal();
+  if (!randomEventOpen) {
+    renderInfoModal();
+  }
   topPanel.classList.toggle("hidden", !state.ui.statsOpen);
-  infoModal.classList.toggle("hidden", !state.ui.infoModal);
-  overlayBackdrop.classList.toggle("hidden", !state.ui.statsOpen && !state.ui.infoModal);
+  infoModal.classList.toggle("hidden", !state.ui.infoModal && !randomEventOpen);
+  overlayBackdrop.classList.toggle("hidden", !state.ui.statsOpen && !state.ui.infoModal && !randomEventOpen);
   statsToggleBtn.textContent = state.ui.statsOpen ? UI_TEXT.toolbar.statsClose : UI_TEXT.toolbar.statsOpen;
   progressToggleBtn.textContent = UI_TEXT.toolbar.progress;
   feedbackToggleBtn.textContent = UI_TEXT.toolbar.feedback;
@@ -3327,6 +3445,9 @@ document.addEventListener(
     startDay,
     advanceResolvingFlow,
     toggleResolvingAutoplay,
+    focusRandomEventChoice,
+    activateRandomEventChoice,
+    confirmRandomEventResult,
     focusTaskControl,
     activateTaskControl,
     moveMemoryCursor,
@@ -3370,6 +3491,9 @@ timetableToggleBtn?.addEventListener("click", () => {
   openInfoModal("weekly-timetable");
 });
 overlayBackdrop.addEventListener("click", () => {
+  if (isRandomEventActive()) {
+    return;
+  }
   toggleStatsPanel(false);
   closeInfoModal();
 });

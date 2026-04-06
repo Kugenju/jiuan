@@ -255,3 +255,57 @@ test("keyboard handler does not route random-event keys outside resolving mode",
   assert.equal(calls.focus, 0);
   assert.equal(calls.activate, 0);
 });
+
+test("keyboard handler confirms random-event result on enter/space", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    focus: 0,
+    activate: 0,
+    confirm: 0,
+    advance: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "resolving",
+      randomEventRuntime: {
+        stage: "result",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    focusRandomEventChoice: () => {
+      calls.focus += 1;
+    },
+    activateRandomEventChoice: () => {
+      calls.activate += 1;
+    },
+    confirmRandomEventResult: () => {
+      calls.confirm += 1;
+    },
+    advanceResolvingFlow: () => {
+      calls.advance += 1;
+    },
+  });
+
+  handler({
+    key: "ArrowRight",
+    preventDefault: () => {},
+  });
+
+  handler({
+    key: "Enter",
+    preventDefault: () => {},
+  });
+
+  handler({
+    key: " ",
+    preventDefault: () => {},
+  });
+
+  assert.equal(calls.focus, 0);
+  assert.equal(calls.activate, 0);
+  assert.equal(calls.confirm, 2);
+  assert.equal(calls.advance, 0);
+});

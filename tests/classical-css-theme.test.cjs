@@ -261,3 +261,14 @@ test("mobile views reinforce contours on key cards with the classical scheme", (
   const borderIndex = mediaContent.indexOf(borderString);
   assert.notStrictEqual(borderIndex, -1, "Expected the border-color inside the mobile selector block");
 });
+
+test("random-event modal and choices use the classical paper styling", () => {
+  const modalBlock = getBlock(escapeRegExp(".random-event-modal"));
+  assert.match(modalBlock, /display:\s*grid;/);
+  assert.match(modalBlock, /gap:\s*12px;/);
+
+  const choiceBlock = getBlock(escapeRegExp(".random-event-choice"));
+  assert.match(choiceBlock, /border:\s*1px solid var\(--line-soft\);/);
+  assert.match(choiceBlock, /background:\s*var\(--paper-panel\);/);
+  assert.match(choiceBlock, /color:\s*var\(--ink-strong\);/);
+});

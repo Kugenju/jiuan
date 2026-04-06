@@ -15,21 +15,34 @@ function createKeyboardHandler(context) {
     }
 
     if (randomEventActive) {
-      if (key === "arrowleft" || key === "arrowup") {
-        if (typeof context.focusRandomEventChoice === "function") {
-          context.focusRandomEventChoice(-1);
-          return;
+      if (randomEventStage === "prompt") {
+        if (key === "arrowleft" || key === "arrowup") {
+          if (typeof context.focusRandomEventChoice === "function") {
+            context.focusRandomEventChoice(-1);
+            return;
+          }
+        }
+        if (key === "arrowright" || key === "arrowdown") {
+          if (typeof context.focusRandomEventChoice === "function") {
+            context.focusRandomEventChoice(1);
+            return;
+          }
+        }
+        if (key === " " || key === "enter") {
+          if (typeof context.activateRandomEventChoice === "function") {
+            context.activateRandomEventChoice();
+            return;
+          }
         }
       }
-      if (key === "arrowright" || key === "arrowdown") {
-        if (typeof context.focusRandomEventChoice === "function") {
-          context.focusRandomEventChoice(1);
-          return;
+      if (randomEventStage === "result") {
+        if (key === " " || key === "enter") {
+          if (typeof context.confirmRandomEventResult === "function") {
+            context.confirmRandomEventResult();
+            return;
+          }
         }
-      }
-      if (key === " " || key === "enter") {
-        if (typeof context.activateRandomEventChoice === "function") {
-          context.activateRandomEventChoice();
+        if (key === "arrowleft" || key === "arrowup" || key === "arrowright" || key === "arrowdown") {
           return;
         }
       }
