@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
 window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
 const {
@@ -10,8 +10,22 @@ function checkThresholdGroup(values, thresholds, comparator) {
   return Object.entries(thresholds || {}).every(([key, value]) => comparator(values[key], value));
 }
 
-function resolveRandomEventSkill(rootState, activity, event, context) {
-  const bonus = event.skillBonus;
+const REWARD_TEMPLATES = {
+  insight_small: {
+    effect: { resources: { insight: 1 } },
+    summary: "悟道点+1",
+  },
+  insight_friend: {
+    effect: { resources: { insight: 1 }, relationships: { friend: 1 } },
+    summary: "悟道点+1，朋友关系+1",
+  },
+  memory_small: {
+    effect: { stats: { memory: 1 } },
+    summary: "记忆+1",
+  },
+};
+
+function resolveRandomEventSkill(rootState, activity, bonus, context) {
   if (!bonus) {
     return null;
   }
@@ -40,6 +54,19 @@ function resolveRandomEventSkill(rootState, activity, event, context) {
   }
 
   return null;
+}
+
+function resolveRandomEventSpeaker(prompt, context) {
+  if (!prompt) {
+    return null;
+  }
+  return (
+    context.uiText?.speakers?.[prompt.speakerKey] ||
+    context.uiText?.speakers?.assignment ||
+    context.uiText?.speakers?.course ||
+    context.uiText?.speakers?.routine ||
+    null
+  );
 }
 
 function randomEventMatchesState(rootState, event, activity, slotIndex) {
@@ -89,53 +116,107 @@ function randomEventMatchesState(rootState, event, activity, slotIndex) {
   return true;
 }
 
-function applyRandomEventToState(rootState, event, activity, slotIndex, context) {
-  const notes = [];
-  applyEffectBundleToRoot(rootState, event.effect);
+function buildPendingRandomEvent(rootState, event, activity, slotIndex, context) {
+  const prompt = event.prompt || event.story || null;
+  const speaker = resolveRandomEventSpeaker(prompt, context);
+  const choices = Array.isArray(event.choices)
+    ? event.choices.map((choice) => ({ id: choice.id, label: choice.label }))
+    : [];
 
-  if (event.note) {
-    notes.push(event.note);
+  return {
+    id: event.id,
+    title: prompt?.title || event.title,
+    body: prompt?.body || "",
+    speaker,
+    slotIndex,
+    activityId: activity?.id || null,
+    activityKind: activity?.kind || null,
+    activityName: activity?.name || null,
+    choices,
+    sourceEvent: event,
+  };
+}
+
+function resolveRandomEventChoice(rootState, pendingEvent, choiceId, activity, context) {
+  const event =
+    pendingEvent?.sourceEvent ||
+    (context.randomEvents || []).find((entry) => entry.id === pendingEvent?.id);
+  if (!event) {
+    return { ok: false, error: "unknown_event" };
   }
 
-  if (event.skillBonus) {
-    const skill = resolveRandomEventSkill(rootState, activity, event, context);
-    if (skill) {
-      rootState.skills[skill] += event.skillBonus.amount;
-      notes.push(
-        event.skillBonus.noteTemplate
-          .replace("{skill}", context.skillLabels[skill])
-          .replace("{amount}", String(event.skillBonus.amount))
-      );
-    } else if (event.skillBonus.fallbackNote) {
-      notes.push(event.skillBonus.fallbackNote);
+  const choices = Array.isArray(event.choices) ? event.choices : [];
+  const choice = choices.find((entry) => entry.id === choiceId);
+  if (!choice) {
+    return { ok: false, error: "unknown_choice" };
+  }
+
+  const notes = [];
+  const rewardSummaries = [];
+
+  if (choice.note) {
+    notes.push(choice.note);
+  }
+
+  if (choice.rewardTemplate) {
+    const template = REWARD_TEMPLATES[choice.rewardTemplate];
+    if (!template) {
+      return { ok: false, error: "unknown_reward_template" };
+    }
+    applyEffectBundleToRoot(rootState, template.effect);
+    if (template.summary) {
+      rewardSummaries.push(template.summary);
     }
   }
 
+  if (choice.effect) {
+    applyEffectBundleToRoot(rootState, choice.effect);
+  }
+
+  if (choice.effectSummary) {
+    rewardSummaries.push(choice.effectSummary);
+  }
+
+  if (choice.skillBonus) {
+    const skill = resolveRandomEventSkill(rootState, activity, choice.skillBonus, context);
+    if (skill) {
+      rootState.skills[skill] += choice.skillBonus.amount;
+      notes.push(
+        choice.skillBonus.noteTemplate
+          .replace("{skill}", context.skillLabels[skill])
+          .replace("{amount}", String(choice.skillBonus.amount))
+      );
+    } else if (choice.skillBonus.fallbackNote) {
+      notes.push(choice.skillBonus.fallbackNote);
+    }
+  }
+
+  if (rewardSummaries.length) {
+    notes.push(`奖励：${rewardSummaries.join("，")}`);
+  }
+
+  if (!Array.isArray(rootState.today.randomEvents)) {
+    rootState.today.randomEvents = [];
+  }
   rootState.today.randomEvents.push({
     id: event.id,
-    slotIndex,
-    activityId: activity.id,
+    slotIndex: pendingEvent?.slotIndex ?? null,
+    activityId: pendingEvent?.activityId || activity?.id || null,
+    choiceId,
   });
 
   normalizePlayerState(rootState);
 
-  const story = event.story
-    ? {
-        title: event.story.title,
-        body: event.story.body,
-        speaker:
-          context.uiText.speakers[event.story.speakerKey] ||
-          context.uiText.speakers.assignment ||
-          context.uiText.speakers.course ||
-          context.uiText.speakers.routine,
-      }
-    : null;
+  const logBody = choice.logBody || event.logBody || notes.join(" ");
+  if (typeof context.addLog === "function") {
+    context.addLog(`随机事件 · ${event.title}`, logBody);
+  }
 
-  context.addLog(`随机事件 · ${event.title}`, event.logBody || notes.join(" "));
   return {
-    event,
+    ok: true,
+    eventId: event.id,
+    choiceId,
     notesText: notes.join(" "),
-    story,
   };
 }
 
@@ -150,7 +231,7 @@ function triggerRandomEventForTiming(rootState, slotIndex, activity, timing, con
     if (rootState.rng() > chance) {
       continue;
     }
-    return applyRandomEventToState(rootState, event, activity, slotIndex, context);
+    return buildPendingRandomEvent(rootState, event, activity, slotIndex, context);
   }
 
   return null;
@@ -159,5 +240,6 @@ function triggerRandomEventForTiming(rootState, slotIndex, activity, timing, con
 Object.assign(window.GAME_RUNTIME, {
   randomEventMatchesState,
   triggerRandomEventForTiming,
+  resolveRandomEventChoice,
 });
 })();
