@@ -120,13 +120,13 @@ const RUNTIME_COPY = {
 };
 
 const REFINING_STAGE_LAYOUT = {
-  boardOrigin: { x: 82, y: 176 },
+  boardOrigin: { x: 82, y: 212 },
   cardSize: { width: 118, height: 86 },
   cardGap: { x: 18, y: 18 },
   triangleSlots: [
-    { x: 648, y: 194, width: 132, height: 82 },
-    { x: 566, y: 338, width: 132, height: 82 },
-    { x: 730, y: 338, width: 132, height: 82 },
+    { x: 648, y: 230, width: 132, height: 82 },
+    { x: 566, y: 374, width: 132, height: 82 },
+    { x: 730, y: 374, width: 132, height: 82 },
   ],
 };
 
@@ -1828,20 +1828,23 @@ function drawTaskScene() {
     typeof UI_TEXT.canvas?.taskSubtitle === "function"
       ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activity.name)
       : `剩余 ${remainingDays} 天 · ${taskDef?.objective?.name || activity.name}`;
+  const taskAreaTop = 170;
+  const taskAreaHeight = 340;
+  const taskAreaBottom = taskAreaTop + taskAreaHeight;
 
   drawAcademyBackdrop("#f0e5d8", "#ddc7af");
   drawBanner(title, subtitle);
 
   ctx.fillStyle = CANVAS_THEME.panelFill;
-  ctx.fillRect(56, 134, 430, 348);
+  ctx.fillRect(56, taskAreaTop, 430, taskAreaHeight);
   ctx.strokeStyle = CANVAS_THEME.panelStroke;
-  ctx.strokeRect(56, 134, 430, 348);
+  ctx.strokeRect(56, taskAreaTop, 430, taskAreaHeight);
   ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "22px 'Microsoft YaHei'";
-  ctx.fillText("翻牌区", 82, 164);
+  ctx.fillText("翻牌区", 82, taskAreaTop + 30);
   ctx.fillStyle = CANVAS_THEME.panelMuted;
   ctx.font = "14px 'Microsoft YaHei'";
-  ctx.fillText("点击卡牌翻开，再点击已翻开的卡牌选中", 82, 192);
+  ctx.fillText("点击卡牌翻开，再点击已翻开的卡牌选中", 82, taskAreaTop + 58);
 
   stageView.cards.forEach((card) => {
     ctx.fillStyle = card.isUsed
@@ -1884,16 +1887,16 @@ function drawTaskScene() {
   }
 
   ctx.fillStyle = CANVAS_THEME.panelFill;
-  ctx.fillRect(534, 134, 358, 348);
+  ctx.fillRect(534, taskAreaTop, 358, taskAreaHeight);
   ctx.strokeStyle = CANVAS_THEME.accentGoldLine;
-  ctx.strokeRect(534, 134, 358, 348);
+  ctx.strokeRect(534, taskAreaTop, 358, taskAreaHeight);
   ctx.fillStyle = CANVAS_THEME.accentGold;
   ctx.font = "22px 'Microsoft YaHei'";
-  ctx.fillText("三角牌阵", 560, 164);
+  ctx.fillText("三角牌阵", 560, taskAreaTop + 30);
   ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "15px 'Microsoft YaHei'";
-  wrapText(taskDef?.objective?.name || activity.name, 560, 192, 304, 24, CANVAS_THEME.panelText);
-  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 560, 238, 304, 22, CANVAS_THEME.panelMuted);
+  wrapText(taskDef?.objective?.name || activity.name, 560, taskAreaTop + 58, 304, 24, CANVAS_THEME.panelText);
+  wrapText(getTaskRequirementText(taskDef) || activity.summary || "", 560, taskAreaTop + 104, 304, 22, CANVAS_THEME.panelMuted);
 
   stageView.slots.forEach((slot) => {
     const card = slot.cardId ? attempt?.deck?.find((entry) => entry.id === slot.cardId) : null;
@@ -1911,7 +1914,7 @@ function drawTaskScene() {
   });
 
   ctx.fillStyle = CANVAS_THEME.panelFillStrong;
-  ctx.fillRect(560, 438, 304, 30);
+  ctx.fillRect(560, taskAreaBottom - 36, 304, 30);
   ctx.fillStyle = CANVAS_THEME.panelText;
   ctx.font = "14px 'Microsoft YaHei'";
   ctx.fillText(
@@ -1919,7 +1922,7 @@ function drawTaskScene() {
       ? `当前选中：${getRefiningCardLabel(getSelectedTaskCard(state))}`
       : getTaskStatusText(state),
     572,
-    458
+    taskAreaBottom - 16
   );
 }
 

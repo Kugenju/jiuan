@@ -195,17 +195,45 @@
     return true;
   }
 
-  function getBaseMaterialTypes() {
-    const cardTypes = (window.GAME_DATA && window.GAME_DATA.REFINING_CARD_TYPES) || null;
-    if (!cardTypes) {
-      return DEFAULT_BASE_MATERIAL_TYPES.slice();
+  function pushUniqueType(list, type) {
+    if (!type || list.includes(type)) {
+      return;
     }
+    list.push(type);
+  }
 
-    const materials = Object.values(cardTypes)
-      .filter((cardType) => cardType && cardType.category === "material")
-      .map((cardType) => cardType.id)
-      .filter(Boolean);
-    return materials.length > 0 ? materials : DEFAULT_BASE_MATERIAL_TYPES.slice();
+  function getRecipeTableMaterialTypes() {
+    const table = (window.GAME_DATA && window.GAME_DATA.REFINING_RECIPE_TABLE) || {};
+    const types = [];
+    Object.keys(table).forEach((recipeKey) => {
+      recipeKey
+        .split("|")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((type) => pushUniqueType(types, type));
+    });
+    return types;
+  }
+
+  function getBaseMaterialTypes(requirements = {}, baseTypes = []) {
+    const cardTypes = (window.GAME_DATA && window.GAME_DATA.REFINING_CARD_TYPES) || null;
+    const declaredMaterials = cardTypes
+      ? Object.values(cardTypes)
+          .filter((cardType) => cardType && cardType.category === "material")
+          .map((cardType) => cardType.id)
+          .filter(Boolean)
+      : [];
+
+    const materialTypes = declaredMaterials.length > 0 ? declaredMaterials.slice() : DEFAULT_BASE_MATERIAL_TYPES.slice();
+    Object.keys(requirements || {}).forEach((type) => {
+      if (Number(requirements[type]) > 0) {
+        pushUniqueType(materialTypes, type);
+      }
+    });
+    getRecipeTableMaterialTypes().forEach((type) => pushUniqueType(materialTypes, type));
+    (baseTypes || []).forEach((type) => pushUniqueType(materialTypes, type));
+    DEFAULT_BASE_MATERIAL_TYPES.forEach((type) => pushUniqueType(materialTypes, type));
+    return materialTypes;
   }
 
   function getTypeCounts(types) {
@@ -265,7 +293,7 @@
     const requirements = objective.materialRequirements || {};
     const baseTypes = types.filter((type) => type !== "lingduan");
     const wildcardCount = types.length - baseTypes.length;
-    const baseMaterials = getBaseMaterialTypes();
+    const baseMaterials = getBaseMaterialTypes(requirements, baseTypes);
     const variants = buildTypeVariants(baseTypes, wildcardCount, baseMaterials);
 
     const scoredVariants = variants.map((variantTypes) => {

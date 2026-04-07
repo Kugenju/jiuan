@@ -518,7 +518,7 @@ test("dispatchSessionCommand keeps the assignability hook active for task activi
   assert.equal(rootState.selectedActivity, "homework");
 });
 
-test("dispatchSessionCommand resets weekly task state when continuing to the next week", () => {
+test("dispatchSessionCommand carries unexpired active tasks into next week", () => {
   const runtime = {
     createBasePlayerState: () => ({
       resources: {},
@@ -594,7 +594,10 @@ test("dispatchSessionCommand resets weekly task state when continuing to the nex
       lastSummary: "old summary",
     },
     tasks: {
-      active: [{ id: "week-1-artifact_refining", status: "active" }],
+      active: [
+        { id: "week-1-artifact_refining", status: "active", unlockDay: 1, expiresOnDay: 9 },
+        { id: "week-1-old-task", status: "active", unlockDay: 2, expiresOnDay: 7 },
+      ],
       weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
       completedMarks: ["artifact_refining"],
       lastStory: { title: "task", body: "done", speaker: "mentor" },
@@ -607,6 +610,7 @@ test("dispatchSessionCommand resets weekly task state when continuing to the nex
       refining: { slots: ["card-0", "card-1", "card-2"] },
     },
     weekActions: ["task"],
+    totalDays: 7,
   };
   const context = {
     slotCount: 2,
@@ -626,7 +630,7 @@ test("dispatchSessionCommand resets weekly task state when continuing to the nex
   assert.equal(rootState.week, 2);
   assert.equal(rootState.day, 1);
   assert.deepEqual(realmSafe(rootState.tasks), {
-    active: [],
+    active: [{ id: "week-1-artifact_refining", status: "active", unlockDay: -6, expiresOnDay: 2 }],
     weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
     completedMarks: [],
     lastStory: null,

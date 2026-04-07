@@ -237,6 +237,10 @@ test("task mode hides lower left panel and gives canvas more space", () => {
 
   const leftPanelTaskBlock = getBlock(escapeRegExp("body.task-mode #left-panel"));
   assert.match(leftPanelTaskBlock, /display:\s*none;/);
+
+  const canvasTaskBlock = getBlock(escapeRegExp("body.task-mode #game-canvas"));
+  assert.match(canvasTaskBlock, /height:\s*auto;/);
+  assert.match(canvasTaskBlock, /aspect-ratio:\s*16\s*\/\s*9;/);
 });
 
 test("mobile views reinforce contours on key cards with the classical scheme", () => {
@@ -332,4 +336,37 @@ test("night academy memory board trades sci-fi blues for lamp-lit ink and gold",
     fragmentNightBlock,
     /background:[\s\S]*?radial-gradient\(circle at 24% 20%, rgba\(214,\s*188,\s*126,\s*0\.1\), transparent 24%\),[\s\S]*?rgba\(20,\s*22,\s*28,\s*0\.82\);/
   );
+});
+
+test("night academy side card and overlays use dark surfaces", () => {
+  const leftPanelNightBlock = getBlock(escapeRegExp("body.memory-mode #left-panel"));
+  assert.match(
+    leftPanelNightBlock,
+    /background:\s*linear-gradient\(180deg,\s*rgba\(27,\s*25,\s*28,\s*0\.92\),\s*rgba\(14,\s*16,\s*22,\s*0\.94\)\);/
+  );
+  assert.match(leftPanelNightBlock, /border-color:\s*rgba\(199,\s*164,\s*90,\s*0\.14\);/);
+
+  const overlayNightBlock = getBlock(escapeRegExp("body.memory-mode .overlay-drawer,\nbody.memory-mode .overlay-modal"));
+  assert.match(
+    overlayNightBlock,
+    /background:\s*linear-gradient\(180deg,\s*rgba\(26,\s*24,\s*29,\s*0\.96\),\s*rgba\(12,\s*15,\s*20,\s*0\.96\)\);/
+  );
+  assert.match(overlayNightBlock, /border-color:\s*rgba\(199,\s*164,\s*90,\s*0\.18\);/);
+});
+
+test("night academy end-night button keeps readable text contrast", () => {
+  const endNightBtnBlock = getBlock(escapeRegExp("body.memory-mode #end-night-btn"));
+  assert.match(endNightBtnBlock, /color:\s*#f3e6cf;/);
+  assert.match(
+    endNightBtnBlock,
+    /background:\s*linear-gradient\(135deg,\s*rgba\(76,\s*112,\s*108,\s*0\.38\),\s*rgba\(52,\s*83,\s*81,\s*0\.46\)\);/
+  );
+});
+
+test("task summary separates top task card from card-and-slot sections", () => {
+  const taskShellBlock = getBlock(escapeRegExp(".task-summary-shell"));
+  assert.match(taskShellBlock, /gap:\s*16px;/);
+
+  const taskMetaGapBlock = getBlock(escapeRegExp(".task-summary-shell > .planning-meta-grid:first-of-type"));
+  assert.match(taskMetaGapBlock, /margin-top:\s*8px;/);
 });

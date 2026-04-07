@@ -194,6 +194,30 @@ function syncTaskProgressForSession(rootState, context) {
   });
 }
 
+function carryOverActiveTasksForNextWeek(rootState, fallbackTotalDays = 7) {
+  const totalDays = Math.max(1, Number(rootState.totalDays || fallbackTotalDays || 7));
+  const activeTasks = Array.isArray(rootState.tasks?.active) ? rootState.tasks.active : [];
+  return activeTasks
+    .filter((task) => task && task.status === "active")
+    .map((task) => {
+      const expiresOnDay = Number(task.expiresOnDay);
+      if (!Number.isFinite(expiresOnDay)) {
+        return null;
+      }
+      const shiftedExpiresOnDay = expiresOnDay - totalDays;
+      if (shiftedExpiresOnDay <= 0) {
+        return null;
+      }
+      const unlockDay = Number(task.unlockDay);
+      return {
+        ...task,
+        unlockDay: Number.isFinite(unlockDay) ? unlockDay - totalDays : task.unlockDay,
+        expiresOnDay: shiftedExpiresOnDay,
+      };
+    })
+    .filter(Boolean);
+}
+
 function resetTaskStateForWeek(rootState, context) {
   const createTaskState =
     typeof context.createTaskState === "function"
@@ -219,8 +243,10 @@ function resetTaskStateForWeek(rootState, context) {
           refining: null,
         });
   const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(context);
+  const carryOverTasks = carryOverActiveTasksForNextWeek(rootState, context.totalDays);
 
   rootState.tasks = createTaskState();
+  rootState.tasks.active = carryOverTasks;
   rootState.taskRuntime = createTaskRuntimeState();
   rootState.randomEventRuntime = createRandomEventRuntimeState();
 }

@@ -156,6 +156,42 @@ test("resolving with xuantie plus two lingduan uses wildcard substitution for be
   assert.equal(result.success, true);
 });
 
+test("resolving with xuantie xuantie lingduan still substitutes required lingshi when material catalog is incomplete", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { createRefiningAttemptState, placeRefiningCardInSlot, resolveRefiningAttempt } = windowObject.GAME_RUNTIME;
+
+  // Simulate a bad card-catalog declaration: lingshi is no longer tagged as material.
+  windowObject.GAME_DATA.REFINING_CARD_TYPES = {
+    ...windowObject.GAME_DATA.REFINING_CARD_TYPES,
+    lingshi: {
+      ...windowObject.GAME_DATA.REFINING_CARD_TYPES.lingshi,
+      category: "ability",
+    },
+  };
+
+  const attempt = createRefiningAttemptState(TASK_DEFS.artifact_refining, makeRng(6));
+  const xuantieCards = attempt.deck.filter((card) => card.type === "xuantie").slice(0, 2);
+  const lingduanCard = attempt.deck.find((card) => card.type === "lingduan");
+
+  assert.equal(xuantieCards.length, 2);
+  assert.ok(lingduanCard);
+
+  attempt.deck.forEach((card) => {
+    if (card.id === xuantieCards[0].id || card.id === xuantieCards[1].id || card.id === lingduanCard.id) {
+      card.revealed = true;
+    }
+  });
+
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[0].id, 0), true);
+  assert.equal(placeRefiningCardInSlot(attempt, xuantieCards[1].id, 1), true);
+  assert.equal(placeRefiningCardInSlot(attempt, lingduanCard.id, 2), true);
+
+  const result = resolveRefiningAttempt(attempt, TASK_DEFS.artifact_refining);
+  assert.equal(result.score, 3);
+  assert.equal(result.success, true);
+});
+
 test("resolving with fewer than three placed cards returns incomplete non-success result", () => {
   const windowObject = loadScripts(["data/tasks.js", "src/domain/refining-minigame.js"]);
   const { TASK_DEFS } = windowObject.GAME_DATA;

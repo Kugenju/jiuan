@@ -59,3 +59,11 @@ test("task scene focuses on refining board without timeline slot strip", () => {
     "task scene should not render day slot timeline cards"
   );
 });
+
+test("task scene keeps a clear vertical gap below the title banner", () => {
+  expectContains("const taskAreaTop = 170;", "task scene should start below banner with explicit top offset");
+  expectContains(
+    "const taskAreaHeight = 340;",
+    "task scene should define task area height independently for balanced spacing"
+  );
+});
