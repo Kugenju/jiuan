@@ -1079,8 +1079,112 @@ function startRun() {
 }
 
 function fillPreset(presetId) {
-  runSessionCommand({ type: "schedule/apply-preset", presetId });
+  const changed = runSessionCommand({ type: "schedule/apply-preset", presetId });
   syncUi();
+  return Boolean(changed);
+}
+
+function getRecommendedSchedulePresets(rootState = state) {
+  const presetIdsByArchetype = {
+    scholar: ["balanced", "body_expand"],
+    mechanist: ["craft_rush", "balanced"],
+    blade: ["body_expand", "balanced"],
+  };
+  const preferredIds = presetIdsByArchetype[rootState.selectedArchetype] || [];
+  const picked = preferredIds
+    .map((id) => SCHEDULE_PRESETS.find((preset) => preset.id === id))
+    .filter(Boolean);
+  if (picked.length) {
+    return picked;
+  }
+  return SCHEDULE_PRESETS.slice(0, 2);
+}
+
+function pickRecommendedFallbackActivityId(slotIndex, rootState = state) {
+  const byArchetype = {
+    scholar: ["homework", "walk_city", "wash"],
+    mechanist: ["part_time", "homework", "wash"],
+    blade: ["training", "walk_city", "homework"],
+  };
+  const bySlot = [
+    ["wash", "training", "homework"],
+    ["homework", "training", "part_time"],
+    ["cafeteria", "homework", "walk_city"],
+    ["homework", "part_time", "training"],
+    ["walk_city", "training", "part_time"],
+    ["homework", "wash", "walk_city"],
+  ];
+  const candidates = [
+    ...(bySlot[slotIndex] || []),
+    ...(byArchetype[rootState.selectedArchetype] || []),
+    getDefaultPlanningActivityId(rootState),
+  ];
+
+  for (const activityId of candidates) {
+    if (!activityId) {
+      continue;
+    }
+    const activity = getActivity(activityId);
+    if (isPlanningActivityAssignable(rootState, activity)) {
+      return activityId;
+    }
+  }
+  return null;
+}
+
+function fillEmptyRecommendedSlots(rootState = state) {
+  if (rootState.mode !== "planning") {
+    return false;
+  }
+  const originalSlot = rootState.selectedSlot;
+  const originalActivity = rootState.selectedActivity;
+  let changed = false;
+
+  for (let index = 0; index < rootState.schedule.length; index += 1) {
+    if (rootState.scheduleLocks[index] || rootState.schedule[index]) {
+      continue;
+    }
+    const fallbackActivityId = pickRecommendedFallbackActivityId(index, rootState);
+    if (!fallbackActivityId) {
+      continue;
+    }
+    runSessionCommand({ type: "schedule/set-slot", index });
+    changed = runSessionCommand({ type: "schedule/assign-activity", activityId: fallbackActivityId }) || changed;
+  }
+
+  runSessionCommand({ type: "schedule/set-slot", index: originalSlot });
+  if (isPlanningActivityAssignable(rootState, getActivity(originalActivity))) {
+    rootState.selectedActivity = originalActivity;
+  }
+  return Boolean(changed);
+}
+
+function applyQuickPreset(presetId) {
+  const applied = runSessionCommand({ type: "schedule/apply-preset", presetId });
+  const filled = fillEmptyRecommendedSlots();
+  syncUi();
+  return Boolean(applied || filled);
+}
+
+function applyRecommendedPreset() {
+  const first = getRecommendedSchedulePresets()[0];
+  if (!first) {
+    return false;
+  }
+  return applyQuickPreset(first.id);
+}
+
+function canCopyPreviousDaySchedule(rootState = state) {
+  if (rootState.mode !== "planning" || rootState.day <= 1) {
+    return false;
+  }
+  return Array.isArray(rootState.dayScheduleHistory?.[rootState.day - 1]);
+}
+
+function copyPreviousDaySchedule() {
+  const copied = runSessionCommand({ type: "schedule/copy-previous-day", day: state.day - 1 });
+  syncUi();
+  return Boolean(copied);
 }
 
 function clearSchedule() {
@@ -1599,7 +1703,7 @@ function drawScene() {
 function drawMenuScene() {
   drawAcademyBackdrop("#efe6d8", "#ddd0b8");
   drawBanner(UI_TEXT.canvas.menuTitle, UI_TEXT.canvas.menuSubtitle);
-  drawFloatingCards(UI_TEXT.canvas.menuCards, 118);
+  drawFloatingCards(UI_TEXT.canvas.menuCards, 258);
 }
 
 function drawPlanningScene() {
@@ -1817,7 +1921,6 @@ function drawTaskScene() {
     572,
     458
   );
-  drawTimelineStrip();
 }
 
 function drawMemoryScene() {
@@ -2014,9 +2117,13 @@ function drawBanner(title, subtitle) {
 }
 
 function drawFloatingCards(labels, y) {
+  const cardWidth = 160;
+  const cardGap = 16;
+  const totalWidth = labels.length * cardWidth + Math.max(0, labels.length - 1) * cardGap;
+  const startX = (canvas.width - totalWidth) / 2;
   labels.forEach((label, index) => {
-    const x = 116 + index * 176 + Math.sin(state.scenePulse + index) * 8;
-    const offsetY = y + Math.cos(state.scenePulse * 1.1 + index) * 6;
+    const x = startX + index * (cardWidth + cardGap) + Math.sin(state.scenePulse + index) * 6;
+    const offsetY = y + Math.cos(state.scenePulse * 1.1 + index) * 4;
     ctx.save();
     ctx.strokeStyle = CANVAS_THEME.screenLine;
     ctx.beginPath();
@@ -2334,6 +2441,7 @@ function syncUi() {
     timetableToggleBtn.textContent = UI_TEXT.toolbar.timetable;
   }
   document.body.classList.toggle("memory-mode", state.mode === "memory");
+  document.body.classList.toggle("task-mode", state.mode === "task");
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =
@@ -2578,6 +2686,8 @@ function renderPlanningPanel() {
   const activeActivity =
     planningActivities.find((activity) => activity.id === state.selectedActivity) || planningActivities[0] || ACTIVITIES[0];
   const { filled: filledSlots, total: totalEditableSlots } = getEditableScheduleStats();
+  const canCopyPrevious = canCopyPreviousDaySchedule();
+  const recommendedPresets = getRecommendedSchedulePresets();
   const todayFixedCourses = state.schedule
     .map((activityId, index) => ({ activity: getActivity(activityId), locked: state.scheduleLocks[index], slot: getSlotFullLabel(index) }))
     .filter((item) => item.locked && item.activity);
@@ -2631,15 +2741,30 @@ function renderPlanningPanel() {
             </div>
           `
       }
-      <div class="action-row planning-actions">
-        <button class="ghost-button warn" id="clear-btn">${UI_TEXT.planning.clear}</button>
-        <button class="primary" id="execute-btn">${UI_TEXT.planning.execute}</button>
+      <div class="planning-actions">
+        <div class="planning-shortcuts">
+          <button class="ghost-button planning-shortcut-btn" id="copy-prev-btn" ${canCopyPrevious ? "" : "disabled"} title="快捷键 C">\u590d\u5236\u524d\u4e00\u5929</button>
+          ${recommendedPresets
+            .map(
+              (preset, index) =>
+                `<button class="ghost-button planning-shortcut-btn ${index === 0 ? "primary" : ""}" data-quick-preset="${preset.id}" title="${index === 0 ? "快捷键 R" : "推荐安排"}">${preset.label}</button>`
+            )
+            .join("")}
+        </div>
+        <div class="action-row planning-main-actions">
+          <button class="ghost-button warn" id="clear-btn">${UI_TEXT.planning.clear}</button>
+          <button class="primary" id="execute-btn">${UI_TEXT.planning.execute}</button>
+        </div>
       </div>
     </div>
   `;
   mainPanel.querySelectorAll("[data-activity]").forEach((button) => {
     button.addEventListener("click", () => assignActivity(button.dataset.activity));
   });
+  mainPanel.querySelectorAll("[data-quick-preset]").forEach((button) => {
+    button.addEventListener("click", () => applyQuickPreset(button.dataset.quickPreset));
+  });
+  mainPanel.querySelector("#copy-prev-btn")?.addEventListener("click", copyPreviousDaySchedule);
   mainPanel.querySelector("#clear-btn").addEventListener("click", clearSchedule);
   mainPanel.querySelector("#execute-btn").addEventListener("click", startDay);
 }
@@ -3565,6 +3690,8 @@ document.addEventListener(
     cycleSelectedActivity,
     assignActivity,
     fillPreset,
+    copyPreviousDaySchedule,
+    applyRecommendedPreset,
     startDay,
     advanceResolvingFlow,
     toggleResolvingAutoplay,

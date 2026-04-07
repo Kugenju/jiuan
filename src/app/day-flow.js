@@ -7,6 +7,7 @@ const {
   getActivitySpeaker,
   triggerRandomEventForTiming,
 } = window.GAME_RUNTIME;
+const RESOLVING_AUTOPLAY_DELAY = 0.6;
 
 function createResolvingFlowState() {
   return {
@@ -14,7 +15,7 @@ function createResolvingFlowState() {
     slotIndex: 0,
     segmentIndex: 0,
     autoplay: false,
-    autoplayDelay: 1.05,
+    autoplayDelay: RESOLVING_AUTOPLAY_DELAY,
     autoplayTimer: 0,
     storyTrail: [],
     justAppended: false,
@@ -168,7 +169,6 @@ function resolveSlotForFlowState(rootState, slotIndex, context) {
     });
     if (opened.ok) {
       if (rootState.resolvingFlow) {
-        rootState.resolvingFlow.autoplay = false;
         rootState.resolvingFlow.autoplayTimer = 0;
       }
       return { ok: true, interruptedByRandomEvent: true };
@@ -339,7 +339,6 @@ function confirmRandomEventResultForFlowState(rootState, context) {
     rootState.progress = rootState.resolvingIndex / slotCount;
   }
   if (rootState.resolvingFlow) {
-    rootState.resolvingFlow.autoplay = false;
     rootState.resolvingFlow.autoplayTimer = 0;
   }
 
@@ -398,6 +397,8 @@ function startDayFlow(rootState, context) {
     rootState.currentStory = structuredClone(context.copy.incompleteSchedule);
     return { ok: false, reason: "incomplete_schedule" };
   }
+  rootState.dayScheduleHistory = rootState.dayScheduleHistory || {};
+  rootState.dayScheduleHistory[rootState.day] = rootState.schedule.slice();
 
   rootState.today = context.createTodayState();
   rootState.progress = 0;
@@ -428,7 +429,6 @@ function advanceResolvingFlowState(rootState, context) {
   }
   if (isRandomEventActive(rootState)) {
     if (rootState.resolvingFlow) {
-      rootState.resolvingFlow.autoplay = false;
       rootState.resolvingFlow.autoplayTimer = 0;
     }
     return { transitioned: false, blockedByRandomEvent: true };

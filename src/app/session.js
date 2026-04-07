@@ -23,6 +23,7 @@ const {
   assignPlanningActivity,
   applySchedulePreset,
   clearPlanningSchedule,
+  copyPlanningScheduleFromHistory,
 } = window.GAME_RUNTIME;
 
 const defaultCreateRandomEventRuntimeState = () => ({
@@ -117,6 +118,7 @@ function createGameState(options) {
     selectedActivity: options.initialActivityId,
     schedule: createEmptySchedule(options.slotCount),
     scheduleLocks: createEmptyScheduleLocks(options.slotCount),
+    dayScheduleHistory: {},
     weeklyTimetable: createEmptyWeeklyTimetable(options.totalDays, options.slotCount),
     courseSelection: {
       blocks: [],
@@ -131,7 +133,7 @@ function createGameState(options) {
       slotIndex: 0,
       segmentIndex: 0,
       autoplay: false,
-      autoplayDelay: 1.05,
+      autoplayDelay: 0.6,
       autoplayTimer: 0,
       storyTrail: [],
       justAppended: false,
@@ -272,6 +274,7 @@ function dispatchSessionCommand(rootState, command, context) {
       );
       rootState.schedule = createEmptySchedule(context.slotCount);
       rootState.scheduleLocks = createEmptyScheduleLocks(context.slotCount);
+      rootState.dayScheduleHistory = {};
       rootState.currentStory = structuredClone(context.copy.runStartStory);
       context.addLog(context.copy.runStartLog.title, context.copy.runStartLog.body);
       return true;
@@ -311,6 +314,12 @@ function dispatchSessionCommand(rootState, command, context) {
     case "schedule/clear":
       return clearPlanningSchedule(rootState, context.slotCount);
 
+    case "schedule/copy-previous-day":
+      return copyPlanningScheduleFromHistory(rootState, Number(command.day || rootState.day - 1), {
+        ...getPlanningAssignmentOptions(context),
+        slotCount: context.slotCount,
+      });
+
     case "schedule/set-slot":
       return setSelectedPlanningSlot(rootState, command.index, {
         slotCount: context.slotCount,
@@ -340,7 +349,7 @@ function dispatchSessionCommand(rootState, command, context) {
         slotIndex: 0,
         segmentIndex: 0,
         autoplay: false,
-        autoplayDelay: 1.05,
+        autoplayDelay: 0.6,
         autoplayTimer: 0,
         storyTrail: [],
         justAppended: false,
@@ -349,6 +358,7 @@ function dispatchSessionCommand(rootState, command, context) {
       rootState.summary = null;
       rootState.weekTracker = null;
       rootState.weekActions = [];
+      rootState.dayScheduleHistory = {};
       resetTaskStateForWeek(rootState, context);
       rootState.schedule = buildDailyScheduleFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);
       rootState.scheduleLocks = buildScheduleLocksFromWeeklyTimetable(rootState.weeklyTimetable, rootState.day, context.slotCount);

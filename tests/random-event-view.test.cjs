@@ -375,3 +375,93 @@ test("keyboard handler blocks unrelated keys when random-event modal is active",
   assert.equal(calls.toggleStats, 0);
   assert.equal(calls.toggleAutoplay, 0);
 });
+
+test("keyboard handler supports planning shortcuts for copy previous day and recommended schedule", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    copyPreviousDaySchedule: 0,
+    applyRecommendedPreset: 0,
+    preventDefault: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "planning",
+      selectedSlot: 0,
+      selectedActivity: "read",
+      randomEventRuntime: {
+        stage: "idle",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    setSlot: () => {},
+    cycleSelectedActivity: () => {},
+    assignActivity: () => {},
+    startDay: () => {},
+    copyPreviousDaySchedule: () => {
+      calls.copyPreviousDaySchedule += 1;
+    },
+    applyRecommendedPreset: () => {
+      calls.applyRecommendedPreset += 1;
+    },
+  });
+
+  handler({
+    key: "c",
+    preventDefault: () => {
+      calls.preventDefault += 1;
+    },
+  });
+  handler({
+    key: "r",
+    preventDefault: () => {
+      calls.preventDefault += 1;
+    },
+  });
+
+  assert.equal(calls.copyPreviousDaySchedule, 1);
+  assert.equal(calls.applyRecommendedPreset, 1);
+  assert.equal(calls.preventDefault, 2);
+});
+
+test("keyboard handler ignores planning shortcuts outside planning mode", () => {
+  const windowObject = loadScripts(["src/app/keyboard-controls.js"]);
+  const { createKeyboardHandler } = windowObject.GAME_RUNTIME;
+  const calls = {
+    copyPreviousDaySchedule: 0,
+    applyRecommendedPreset: 0,
+  };
+
+  const handler = createKeyboardHandler({
+    state: {
+      mode: "resolving",
+      randomEventRuntime: {
+        stage: "idle",
+      },
+    },
+    slotCount: 6,
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    advanceResolvingFlow: () => {},
+    toggleResolvingAutoplay: () => {},
+    copyPreviousDaySchedule: () => {
+      calls.copyPreviousDaySchedule += 1;
+    },
+    applyRecommendedPreset: () => {
+      calls.applyRecommendedPreset += 1;
+    },
+  });
+
+  handler({
+    key: "c",
+    preventDefault: () => {},
+  });
+  handler({
+    key: "r",
+    preventDefault: () => {},
+  });
+
+  assert.equal(calls.copyPreviousDaySchedule, 0);
+  assert.equal(calls.applyRecommendedPreset, 0);
+});

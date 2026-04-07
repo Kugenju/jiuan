@@ -80,11 +80,19 @@ body::before {
   overflow: hidden;
 }
 
+body.task-mode .stage-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 #left-panel {
   min-height: 0;
   height: 100%;
   max-height: none;
   overflow: auto;
+}
+
+body.task-mode #left-panel {
+  display: none;
 }
 
 .control-panel {
@@ -1487,6 +1495,22 @@ button {
   align-content: start;
 }
 
+.planning-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.planning-shortcut-btn {
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
 .course-selection-list {
   display: grid;
   gap: 12px;
@@ -1548,8 +1572,8 @@ button {
 
 .planning-actions {
   margin-top: 0;
-  padding-top: 10px;
-  padding-bottom: 2px;
+  padding-top: 8px;
+  padding-bottom: 4px;
   border-top: 1px solid rgba(168, 142, 112, 0.38);
   background: linear-gradient(180deg, rgba(248, 242, 230, 0), rgba(248, 242, 230, 0.94) 28%);
   backdrop-filter: blur(8px);
@@ -1557,15 +1581,21 @@ button {
   bottom: 0;
 }
 
+.planning-main-actions {
+  margin-top: 0;
+}
+
 .task-summary-shell {
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   overflow: auto;
   padding-right: 4px;
 }
 
 .task-slot-summary-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1573,6 +1603,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: flex-start;
 }
 
 .task-round-pill {
@@ -1615,6 +1646,13 @@ button {
 .task-slot-summary small {
   color: var(--muted);
   line-height: 1.5;
+}
+
+.task-summary-shell .planning-actions {
+  position: static;
+  background: transparent;
+  backdrop-filter: none;
+  border-top: 1px solid rgba(168, 142, 112, 0.2);
 }
 
 .debug-refining-page {
@@ -2043,7 +2081,8 @@ button {
   }
 
   .planning-meta-grid,
-  .planning-activity-grid {
+  .planning-activity-grid,
+  .task-slot-summary-grid {
     grid-template-columns: 1fr !important;
   }
 

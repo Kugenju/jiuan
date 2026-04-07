@@ -251,17 +251,17 @@ const SCHEDULE_PRESETS = [
   {
     id: "balanced",
     label: "稳扎稳打",
-    schedule: ["wash", null, "cafeteria", null, "walk_city", "homework"],
+    schedule: ["wash", "homework", "cafeteria", "walk_city", "walk_city", "homework"],
   },
   {
     id: "craft_rush",
     label: "工坊课后",
-    schedule: ["wash", null, "cafeteria", null, "part_time", "homework"],
+    schedule: ["wash", "homework", "cafeteria", "part_time", "part_time", "homework"],
   },
   {
     id: "body_expand",
     label: "修身舒展",
-    schedule: ["training", null, "cafeteria", null, "training", "wash"],
+    schedule: ["training", "training", "cafeteria", "walk_city", "training", "wash"],
   },
 ];
 

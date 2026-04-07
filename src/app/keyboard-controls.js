@@ -9,7 +9,7 @@ function createKeyboardHandler(context) {
     if (
       ["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "a", "b", "f", "i", "p"].includes(key) ||
       event.key === " " ||
-      (context.state.mode === "planning" && /^[1-9]$/.test(event.key))
+      (context.state.mode === "planning" && (/^[1-9]$/.test(event.key) || key === "c" || key === "r"))
     ) {
       event.preventDefault();
     }
@@ -80,6 +80,12 @@ function createKeyboardHandler(context) {
       if (key === "arrowup") context.cycleSelectedActivity(-1);
       if (key === "arrowdown") context.cycleSelectedActivity(1);
       if (key === " ") context.assignActivity(context.state.selectedActivity);
+      if (key === "c" && typeof context.copyPreviousDaySchedule === "function") {
+        context.copyPreviousDaySchedule();
+      }
+      if (key === "r" && typeof context.applyRecommendedPreset === "function") {
+        context.applyRecommendedPreset();
+      }
     }
 
     if (event.key === "Enter" && context.state.mode === "planning") {

@@ -40,3 +40,22 @@ test("academy backdrop layers in courtyard framing helpers", () => {
   expectContains("drawRoofline();", "drawAcademyBackdrop should call drawRoofline");
   expectContains("drawLatticeScreen();", "drawAcademyBackdrop should call drawLatticeScreen");
 });
+
+test("menu floating cards are drawn below the banner card", () => {
+  expectContains(
+    "drawFloatingCards(UI_TEXT.canvas.menuCards, 258);",
+    "menu floating cards should start below the title banner to avoid overlap"
+  );
+});
+
+test("task scene focuses on refining board without timeline slot strip", () => {
+  const start = mainSource.indexOf("function drawTaskScene()");
+  const end = mainSource.indexOf("function drawMemoryScene()");
+  assert.ok(start >= 0 && end > start, "drawTaskScene block should exist");
+  const block = mainSource.slice(start, end);
+  assert.equal(
+    block.includes("drawTimelineStrip();"),
+    false,
+    "task scene should not render day slot timeline cards"
+  );
+});

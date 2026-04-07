@@ -220,6 +220,25 @@ test("task round pills follow the refined gold/daiqing status palette", () => {
   assert.match(pillBlock, /box-shadow:\s*0\s*6px\s*12px\s*rgba\(47,\s*107,\s*102,\s*0\.22\);/);
 });
 
+test("task summary stack uses vertical flow and non-sticky actions to avoid overlap", () => {
+  const taskShellBlock = getBlock(escapeRegExp(".task-summary-shell"));
+  assert.match(taskShellBlock, /display:\s*flex;/);
+  assert.match(taskShellBlock, /flex-direction:\s*column;/);
+
+  const taskActionBlock = getBlock(escapeRegExp(".task-summary-shell .planning-actions"));
+  assert.match(taskActionBlock, /position:\s*static;/);
+  assert.match(taskActionBlock, /background:\s*transparent;/);
+  assert.match(taskActionBlock, /backdrop-filter:\s*none;/);
+});
+
+test("task mode hides lower left panel and gives canvas more space", () => {
+  const stagePanelTaskBlock = getBlock(escapeRegExp("body.task-mode .stage-panel"));
+  assert.match(stagePanelTaskBlock, /grid-template-rows:\s*auto minmax\(0,\s*1fr\);/);
+
+  const leftPanelTaskBlock = getBlock(escapeRegExp("body.task-mode #left-panel"));
+  assert.match(leftPanelTaskBlock, /display:\s*none;/);
+});
+
 test("mobile views reinforce contours on key cards with the classical scheme", () => {
   const mediaMarker = "@media (max-width: 720px)";
   const markerIndex = styles.indexOf(mediaMarker);

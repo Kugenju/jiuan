@@ -191,6 +191,47 @@ function clearPlanningSchedule(rootState, slotCount) {
   return true;
 }
 
+function copyPlanningScheduleFromHistory(rootState, sourceDay, options = {}) {
+  if (rootState.mode !== "planning") {
+    return false;
+  }
+  const source = rootState.dayScheduleHistory?.[sourceDay];
+  if (!Array.isArray(source)) {
+    return false;
+  }
+
+  const slotCount = Number.isInteger(options.slotCount) ? options.slotCount : rootState.schedule.length;
+  let changed = false;
+
+  for (let index = 0; index < slotCount; index += 1) {
+    if (rootState.scheduleLocks[index]) {
+      continue;
+    }
+
+    const sourceActivityId = source[index] || null;
+    if (!sourceActivityId) {
+      if (rootState.schedule[index] !== null) {
+        rootState.schedule[index] = null;
+        changed = true;
+      }
+      continue;
+    }
+
+    const activity = options.getActivity(sourceActivityId);
+    const nextActivityId = isPlanningActivityAllowed(rootState, activity, options) ? sourceActivityId : null;
+    if (rootState.schedule[index] !== nextActivityId) {
+      rootState.schedule[index] = nextActivityId;
+      changed = true;
+    }
+  }
+
+  if (!rootState.scheduleLocks[rootState.selectedSlot] && rootState.schedule[rootState.selectedSlot]) {
+    rootState.selectedActivity = rootState.schedule[rootState.selectedSlot];
+  }
+
+  return changed;
+}
+
 function areAllScheduleSlotsFilled(schedule) {
   return schedule.every(Boolean);
 }
@@ -215,6 +256,7 @@ Object.assign(window.GAME_RUNTIME, {
   assignPlanningActivity,
   applySchedulePreset,
   clearPlanningSchedule,
+  copyPlanningScheduleFromHistory,
   areAllScheduleSlotsFilled,
 });
 })();

@@ -142,9 +142,11 @@ test("resolveSlotForFlowState opens a random-event prompt and defers slot comple
   assert.equal(rootState.randomEventRuntime.continuation?.slotIndex, 0);
   assert.equal(rootState.randomEventRuntime.continuation?.activity, undefined);
   assert.equal(rootState.randomEventRuntime.continuation?.activityId, "study");
+  assert.equal(rootState.resolvingFlow.autoplay, true);
 
   const blocked = advanceResolvingFlowState(rootState, context);
   assert.equal(blocked?.blockedByRandomEvent, true);
+  assert.equal(rootState.resolvingFlow.autoplay, true);
 });
 
 test("resolveSlotForFlowState ignores random events without choices", () => {
@@ -418,6 +420,7 @@ test("confirmRandomEventResultForFlowState finalizes slot once and resumes resol
   assert.equal(rootState.resolvingFlow.storyTrail.length, 2);
   assert.equal(rootState.resolvingFlow.storyTrail[0].title, "result");
   assert.equal(rootState.resolvingFlow.storyTrail[1].title, "unlock");
+  assert.equal(rootState.resolvingFlow.autoplay, true);
   assert.equal(rootState.randomEventRuntime.stage, "idle");
   assert.equal(rootState.randomEventRuntime.pendingEvent, null);
 
