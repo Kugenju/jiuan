@@ -91,7 +91,7 @@ const DAO_DEBATE_CARDS = {
   },
   counterexample_dossier: {
     id: "counterexample_dossier",
-    label: "\u53cd\u8bc1\u6848\u5377",
+    label: "反证案卷",
     tag: "counterexample",
     hidden: true,
     unlockFlag: "dao_counterexample_insight",

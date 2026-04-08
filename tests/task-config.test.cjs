@@ -79,7 +79,7 @@ test("artifact and dao debate task configs are exported with task activity metad
   assert.ok(DAO_DEBATE_CARDS.uphold_principle.hidden !== true);
   assert.equal(DAO_DEBATE_CARDS.archive_case_note.hidden, true);
   assert.equal(DAO_DEBATE_CARDS.archive_case_note.id, "archive_case_note");
-  assert.equal(DAO_DEBATE_CARDS.counterexample_dossier.label, "\u53cd\u8bc1\u6848\u5377");
+  assert.equal(DAO_DEBATE_CARDS.counterexample_dossier.label, "反证案卷");
   const hiddenUnlockFlags = Object.values(DAO_DEBATE_CARDS)
     .filter((card) => card.hidden === true && typeof card.unlockFlag === "string")
     .map((card) => card.unlockFlag)
