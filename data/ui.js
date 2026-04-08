@@ -197,6 +197,16 @@ const UI_TEXT = {
   },
   task: {
     title: "炼器委托",
+    daoDebateTitle: "道法论辩",
+    daoDebateRound(current, max) {
+      return `第 ${current} / ${max} 轮`;
+    },
+    daoConviction(value) {
+      return `立论 ${value}`;
+    },
+    daoExposure(value) {
+      return `破绽 ${value}`;
+    },
     objective: "委托目标",
     requirement: "材料要求",
     selected: "当前选牌",
@@ -258,6 +268,7 @@ const UI_TEXT = {
     taskMarks: "委托印记",
     taskMarkLabels: {
       artifact_refining: "炼器委托",
+      dao_debate: "道法论辩",
       default: "委托",
     },
   },
