@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
   window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
   // Scaffold placeholder; real rendering logic arrives in later tasks.
