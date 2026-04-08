@@ -29,6 +29,15 @@ function normalizeNumber(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+const TASK_DISPLAY_NAMES = Object.freeze({
+  artifact_refining: "炼器任务",
+  dao_debate: "道法论辩",
+});
+
+function getTaskDisplayName(taskType) {
+  return TASK_DISPLAY_NAMES[taskType] || "委托任务";
+}
+
 function ensureTaskState(rootState) {
   const base = rootState.tasks && typeof rootState.tasks === "object" ? rootState.tasks : {};
   const weeklyProgress =
@@ -107,7 +116,7 @@ function handleResolvedCourseTaskProgress(rootState, activity, context) {
       const task = buildTimedTaskInstance(taskDef, rootState);
       rootState.tasks.active.push(task);
       if (typeof context.copy?.taskUnlocked === "function") {
-        rootState.currentStory = context.copy.taskUnlocked("炼器任务", task.expiresOnDay);
+        rootState.currentStory = context.copy.taskUnlocked(getTaskDisplayName(taskDef.id), task.expiresOnDay);
         rootState.tasks.lastStory = structuredClone(rootState.currentStory);
       }
       return task;
@@ -127,7 +136,7 @@ function handleResolvedCourseTaskProgress(rootState, activity, context) {
       const task = buildTimedTaskInstance(taskDef, rootState);
       rootState.tasks.active.push(task);
       if (typeof context.copy?.taskUnlocked === "function") {
-        rootState.currentStory = context.copy.taskUnlocked(taskDef.id, task.expiresOnDay);
+        rootState.currentStory = context.copy.taskUnlocked(getTaskDisplayName(taskDef.id), task.expiresOnDay);
         rootState.tasks.lastStory = structuredClone(rootState.currentStory);
       }
       return task;
@@ -142,7 +151,7 @@ function expireTimedTasksForDay(rootState, currentDay, context) {
     if (task.status === "active" && currentDay > task.expiresOnDay) {
       task.status = "expired";
       if (typeof context.copy?.taskExpired === "function") {
-        rootState.currentStory = context.copy.taskExpired("炼器任务");
+        rootState.currentStory = context.copy.taskExpired(getTaskDisplayName(task.type));
         rootState.tasks.lastStory = structuredClone(rootState.currentStory);
       }
     }

@@ -66,6 +66,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     },
     resolvingFlow: {
       storyTrail: [],
@@ -109,6 +110,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
         mode: activity.id,
         result: null,
         refining: null,
+        debate: null,
       };
       return { ok: true, enteredTask: true };
     },
@@ -124,6 +126,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
     mode: "artifact_refining_task",
     result: null,
     refining: null,
+    debate: null,
   });
   assert.equal(calls.beginTaskActivityForSlot, 1);
   assert.equal(calls.applyActivityToState, 0);
@@ -258,6 +261,7 @@ test("resolveSlotForFlowState shows unlock story after the final craft course un
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     },
     resolvingFlow: {
       storyTrail: [],
@@ -325,6 +329,7 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
         deck: [],
         slots: ["card-1", "card-2", "card-3"],
       },
+      debate: null,
     },
     resolvingFlow: {
       phase: "result",
@@ -360,6 +365,7 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   });
   assert.deepEqual(realmSafe(rootState.resolvingFlow.storyTrail), [detail]);
   assert.equal(rootState.currentStory.title, "task result");
@@ -553,6 +559,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     }),
   };
   const windowObject = loadScripts(["src/app/session.js"], { runtime });
@@ -595,7 +602,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
     },
     tasks: {
       active: [
-        { id: "week-1-artifact_refining", status: "active", unlockDay: 1, expiresOnDay: 9 },
+        { id: "week-1-artifact_refining", status: "active", unlockDay: 1, availableFromDay: 8, expiresOnDay: 9 },
         { id: "week-1-old-task", status: "active", unlockDay: 2, expiresOnDay: 7 },
       ],
       weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
@@ -608,6 +615,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
       mode: "artifact_refining_task",
       result: { success: true, score: 3 },
       refining: { slots: ["card-0", "card-1", "card-2"] },
+      debate: null,
     },
     weekActions: ["task"],
     totalDays: 7,
@@ -630,7 +638,9 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
   assert.equal(rootState.week, 2);
   assert.equal(rootState.day, 1);
   assert.deepEqual(realmSafe(rootState.tasks), {
-    active: [{ id: "week-1-artifact_refining", status: "active", unlockDay: -6, expiresOnDay: 2 }],
+    active: [
+      { id: "week-1-artifact_refining", status: "active", unlockDay: -6, availableFromDay: 1, expiresOnDay: 2 },
+    ],
     weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
     completedMarks: [],
     lastStory: null,
@@ -641,6 +651,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   });
 });
 
@@ -773,6 +784,7 @@ test("buildTextStateExport snapshots task system state for debugging", () => {
         revealsRemaining: 2,
         selectedCardId: "card-0",
       },
+      debate: null,
     },
     summary: null,
   };
@@ -821,6 +833,7 @@ test("applyRefiningTaskRound keeps task runtime active when cumulative score is 
       mode: "artifact_refining_task",
       result: null,
       refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+      debate: null,
     },
   };
 
@@ -852,6 +865,7 @@ test("applyRefiningTaskRound returns cumulative terminal result on success", () 
       mode: "artifact_refining_task",
       result: null,
       refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+      debate: null,
     },
   };
   rootState.taskRuntime.refining.totalScore = 2;

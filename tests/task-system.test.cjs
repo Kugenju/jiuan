@@ -218,9 +218,18 @@ test("lifecycle methods normalize partial persisted task state and expiry day ma
 
 test("dao course lifecycle unlocks next-day debate task with hidden unlock flags", () => {
   const windowObject = loadScripts(["data/tasks.js", "src/domain/task-system.js"]);
-  const { createTaskState, createTaskRuntimeState, handleResolvedCourseTaskProgress, getSchedulableTaskActivityIds } =
-    windowObject.GAME_RUNTIME;
+  const {
+    createTaskState,
+    createTaskRuntimeState,
+    handleResolvedCourseTaskProgress,
+    getSchedulableTaskActivityIds,
+    expireTimedTasksForDay,
+  } = windowObject.GAME_RUNTIME;
   const { TASK_DEFS } = windowObject.GAME_DATA;
+  const copyCalls = {
+    taskUnlocked: [],
+    taskExpired: [],
+  };
 
   const rootState = {
     week: 3,
@@ -246,6 +255,12 @@ test("dao course lifecycle unlocks next-day debate task with hidden unlock flags
     { id: "course_dao_a", kind: "course", skill: "dao" },
     {
       taskDefs: TASK_DEFS,
+      copy: {
+        taskUnlocked: (taskName) => {
+          copyCalls.taskUnlocked.push(taskName);
+          return { title: "unlocked", body: taskName, speaker: "system" };
+        },
+      },
     }
   );
   assert.equal(firstUnlockResult, null);
@@ -256,6 +271,12 @@ test("dao course lifecycle unlocks next-day debate task with hidden unlock flags
     { id: "course_dao_b", kind: "course", skill: "dao" },
     {
       taskDefs: TASK_DEFS,
+      copy: {
+        taskUnlocked: (taskName) => {
+          copyCalls.taskUnlocked.push(taskName);
+          return { title: "unlocked", body: taskName, speaker: "system" };
+        },
+      },
     }
   );
 
@@ -267,6 +288,18 @@ test("dao course lifecycle unlocks next-day debate task with hidden unlock flags
   assert.deepEqual(realmSafe(unlockedTask.unlockFlags), ["dao_archive_insight"]);
   assert.equal(getSchedulableTaskActivityIds(rootState, 4).has("dao_debate_task"), false);
   assert.equal(getSchedulableTaskActivityIds(rootState, 5).has("dao_debate_task"), true);
+  assert.deepEqual(copyCalls.taskUnlocked, ["道法论辩"]);
+
+  expireTimedTasksForDay(rootState, 11, {
+    copy: {
+      taskExpired: (taskName) => {
+        copyCalls.taskExpired.push(taskName);
+        return { title: "expired", body: taskName, speaker: "system" };
+      },
+    },
+  });
+  assert.equal(rootState.tasks.active[0].status, "expired");
+  assert.deepEqual(copyCalls.taskExpired, ["道法论辩"]);
 });
 
 test("dispatchSessionCommand falls back to runtime syncWeeklyTaskProgress when context does not inject it", () => {

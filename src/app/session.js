@@ -210,9 +210,12 @@ function carryOverActiveTasksForNextWeek(rootState, fallbackTotalDays = 7) {
         return null;
       }
       const unlockDay = Number(task.unlockDay);
+      const shiftedUnlockDay = Number.isFinite(unlockDay) ? unlockDay - totalDays : task.unlockDay;
+      const availableFromDay = Number(task.availableFromDay);
       return {
         ...task,
-        unlockDay: Number.isFinite(unlockDay) ? unlockDay - totalDays : task.unlockDay,
+        unlockDay: shiftedUnlockDay,
+        availableFromDay: Number.isFinite(availableFromDay) ? availableFromDay - totalDays : shiftedUnlockDay,
         expiresOnDay: shiftedExpiresOnDay,
       };
     })
