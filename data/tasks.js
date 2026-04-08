@@ -89,6 +89,13 @@ const DAO_DEBATE_CARDS = {
     hidden: true,
     unlockFlag: "dao_archive_insight",
   },
+  counterexample_dossier: {
+    id: "counterexample_dossier",
+    label: "????",
+    tag: "counterexample",
+    hidden: true,
+    unlockFlag: "dao_counterexample_insight",
+  },
 };
 
 const DAO_DEBATE_FOLLOWUPS = {

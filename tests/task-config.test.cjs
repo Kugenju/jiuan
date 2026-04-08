@@ -79,6 +79,11 @@ test("artifact and dao debate task configs are exported with task activity metad
   assert.ok(DAO_DEBATE_CARDS.uphold_principle.hidden !== true);
   assert.equal(DAO_DEBATE_CARDS.archive_case_note.hidden, true);
   assert.equal(DAO_DEBATE_CARDS.archive_case_note.id, "archive_case_note");
+  const hiddenUnlockFlags = Object.values(DAO_DEBATE_CARDS)
+    .filter((card) => card.hidden === true && typeof card.unlockFlag === "string")
+    .map((card) => card.unlockFlag)
+    .sort();
+  assert.deepEqual(hiddenUnlockFlags, ["dao_archive_insight", "dao_counterexample_insight"]);
 
   assert.deepEqual(Object.keys(DAO_DEBATE_FOLLOWUPS).sort(), [
     "press_authority",
@@ -88,6 +93,10 @@ test("artifact and dao debate task configs are exported with task activity metad
   ]);
   assert.equal(DAO_DEBATE_FOLLOWUPS.press_utility.id, "press_utility");
 
+  assert.equal(UI_TEXT.task.daoDebateTitle, "道法论辩");
+  assert.equal(UI_TEXT.task.daoDebateRound(2, 3), "第 2 / 3 轮");
+  assert.equal(UI_TEXT.task.daoConviction(4), "立论 4");
+  assert.equal(UI_TEXT.task.daoExposure(1), "破绽 1");
   assert.equal(UI_TEXT.summary.taskMarkLabels.dao_debate, "\u9053\u6cd5\u8bba\u8fa9");
   assert.deepEqual(Object.keys(REFINING_CARD_TYPES).sort(), ["guanxing", "lingduan", "lingshi", "mujing", "xuantie"]);
   assert.equal(REFINING_RECIPE_TABLE["lingshi|xuantie|xuantie"], 3);
@@ -102,6 +111,8 @@ test("index loads timed task runtime modules before main app bootstrap", () => {
   assert.match(indexHtml, /<script src="\.\/src\/domain\/dao-debate-minigame\.js"><\/script>/);
   assert.match(indexHtml, /<script src="\.\/src\/app\/refining-view\.js"><\/script>/);
   assert.match(indexHtml, /<script src="\.\/src\/app\/dao-debate-view\.js"><\/script>/);
+  assert.equal(fs.existsSync(path.join(TEST_ROOT, "src/domain/dao-debate-minigame.js")), true);
+  assert.equal(fs.existsSync(path.join(TEST_ROOT, "src/app/dao-debate-view.js")), true);
   assert.ok(indexHtml.indexOf('./src/domain/task-system.js') < indexHtml.indexOf('./main.js'));
   assert.ok(indexHtml.indexOf('./src/domain/refining-minigame.js') < indexHtml.indexOf('./main.js'));
   assert.ok(indexHtml.indexOf('./src/domain/dao-debate-minigame.js') < indexHtml.indexOf('./main.js'));
