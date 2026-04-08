@@ -7,6 +7,7 @@ function createTaskState() {
     weeklyProgress: {
       craftCompleted: 0,
       craftTotal: 0,
+      daoCompleted: 0,
     },
     completedMarks: [],
     lastStory: null,
@@ -20,6 +21,7 @@ function createTaskRuntimeState() {
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   };
 }
 
@@ -37,6 +39,7 @@ function ensureTaskState(rootState) {
     weeklyProgress: {
       craftCompleted: normalizeNumber(weeklyProgress.craftCompleted, 0),
       craftTotal: normalizeNumber(weeklyProgress.craftTotal, 0),
+      daoCompleted: normalizeNumber(weeklyProgress.daoCompleted, 0),
     },
     completedMarks: Array.isArray(base.completedMarks) ? base.completedMarks : [],
     lastStory: Object.prototype.hasOwnProperty.call(base, "lastStory") ? base.lastStory : null,
@@ -66,13 +69,18 @@ function syncWeeklyTaskProgress(rootState, context) {
 
 function buildTimedTaskInstance(taskDef, rootState) {
   const durationDays = Math.max(1, normalizeNumber(taskDef.durationDays, 1));
+  const availableAfterDays = Math.max(0, normalizeNumber(taskDef.availableAfterDays, 0));
+  const hiddenUnlockFlags = Array.isArray(taskDef.hiddenUnlockFlags) ? taskDef.hiddenUnlockFlags : [];
+  const storyFlags = rootState.storyFlags && typeof rootState.storyFlags === "object" ? rootState.storyFlags : {};
   return {
     id: `week-${rootState.week}-${taskDef.id}`,
     type: taskDef.id,
     activityId: taskDef.activityId,
     status: "active",
     unlockDay: rootState.day,
+    availableFromDay: rootState.day + availableAfterDays,
     expiresOnDay: rootState.day + durationDays - 1,
+    unlockFlags: hiddenUnlockFlags.filter((flagName) => storyFlags[flagName]),
     attemptCount: 0,
     rewardClaimed: false,
   };
@@ -80,27 +88,50 @@ function buildTimedTaskInstance(taskDef, rootState) {
 
 function handleResolvedCourseTaskProgress(rootState, activity, context) {
   ensureTaskState(rootState);
-  if (activity?.kind !== "course" || activity.skill !== "craft") {
+  if (activity?.kind !== "course") {
     return null;
   }
-  rootState.tasks.weeklyProgress.craftCompleted += 1;
-  const taskDef = context.taskDefs?.artifact_refining;
-  if (!taskDef) {
-    return null;
-  }
-  const alreadyExists = rootState.tasks.active.some((task) => task.type === taskDef.id && task.status === "active");
-  if (
-    rootState.tasks.weeklyProgress.craftTotal > 0 &&
-    rootState.tasks.weeklyProgress.craftCompleted === rootState.tasks.weeklyProgress.craftTotal &&
-    !alreadyExists
-  ) {
-    const task = buildTimedTaskInstance(taskDef, rootState);
-    rootState.tasks.active.push(task);
-    if (typeof context.copy?.taskUnlocked === "function") {
-      rootState.currentStory = context.copy.taskUnlocked("炼器任务", task.expiresOnDay);
-      rootState.tasks.lastStory = structuredClone(rootState.currentStory);
+
+  if (activity.skill === "craft") {
+    rootState.tasks.weeklyProgress.craftCompleted += 1;
+    const taskDef = context.taskDefs?.artifact_refining;
+    if (!taskDef) {
+      return null;
     }
-    return task;
+    const alreadyExists = rootState.tasks.active.some((task) => task.type === taskDef.id && task.status === "active");
+    if (
+      rootState.tasks.weeklyProgress.craftTotal > 0 &&
+      rootState.tasks.weeklyProgress.craftCompleted === rootState.tasks.weeklyProgress.craftTotal &&
+      !alreadyExists
+    ) {
+      const task = buildTimedTaskInstance(taskDef, rootState);
+      rootState.tasks.active.push(task);
+      if (typeof context.copy?.taskUnlocked === "function") {
+        rootState.currentStory = context.copy.taskUnlocked("炼器任务", task.expiresOnDay);
+        rootState.tasks.lastStory = structuredClone(rootState.currentStory);
+      }
+      return task;
+    }
+    return null;
+  }
+
+  if (activity.skill === "dao") {
+    rootState.tasks.weeklyProgress.daoCompleted += 1;
+    const taskDef = context.taskDefs?.dao_debate;
+    if (!taskDef) {
+      return null;
+    }
+    const unlockThreshold = Math.max(1, normalizeNumber(taskDef.unlockThreshold, 1));
+    const alreadyExists = rootState.tasks.active.some((task) => task.type === taskDef.id && task.status === "active");
+    if (rootState.tasks.weeklyProgress.daoCompleted >= unlockThreshold && !alreadyExists) {
+      const task = buildTimedTaskInstance(taskDef, rootState);
+      rootState.tasks.active.push(task);
+      if (typeof context.copy?.taskUnlocked === "function") {
+        rootState.currentStory = context.copy.taskUnlocked(taskDef.id, task.expiresOnDay);
+        rootState.tasks.lastStory = structuredClone(rootState.currentStory);
+      }
+      return task;
+    }
   }
   return null;
 }
@@ -118,9 +149,20 @@ function expireTimedTasksForDay(rootState, currentDay, context) {
   });
 }
 
-function getSchedulableTaskActivityIds(rootState) {
+function getSchedulableTaskActivityIds(rootState, currentDay = rootState?.day) {
   const activeTasks = rootState.tasks?.active || [];
-  return new Set(activeTasks.filter((task) => task.status === "active").map((task) => task.activityId));
+  const normalizedCurrentDay = normalizeNumber(currentDay, normalizeNumber(rootState?.day, 0));
+  return new Set(
+    activeTasks
+      .filter((task) => {
+        if (!task || task.status !== "active") {
+          return false;
+        }
+        const availableFromDay = normalizeNumber(task.availableFromDay, normalizeNumber(task.unlockDay, 0));
+        return normalizedCurrentDay >= availableFromDay;
+      })
+      .map((task) => task.activityId)
+  );
 }
 
 function getActiveTaskForRuntime(rootState) {

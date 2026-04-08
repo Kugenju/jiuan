@@ -59,6 +59,7 @@ test("task system supports weekly lifecycle unlock and expiry", () => {
     weeklyProgress: {
       craftCompleted: 0,
       craftTotal: 0,
+      daoCompleted: 0,
     },
     completedMarks: [],
     lastStory: null,
@@ -114,7 +115,9 @@ test("task system supports weekly lifecycle unlock and expiry", () => {
       activityId: "artifact_refining_task",
       status: "active",
       unlockDay: 3,
+      availableFromDay: 3,
       expiresOnDay: 5,
+      unlockFlags: [],
       attemptCount: 0,
       rewardClaimed: false,
     },
@@ -211,6 +214,59 @@ test("lifecycle methods normalize partial persisted task state and expiry day ma
     },
   });
   assert.equal(rootState.tasks.active[0].status, "expired");
+});
+
+test("dao course lifecycle unlocks next-day debate task with hidden unlock flags", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/task-system.js"]);
+  const { createTaskState, createTaskRuntimeState, handleResolvedCourseTaskProgress, getSchedulableTaskActivityIds } =
+    windowObject.GAME_RUNTIME;
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+
+  const rootState = {
+    week: 3,
+    day: 4,
+    tasks: createTaskState(),
+    storyFlags: {
+      dao_archive_insight: true,
+      dao_counterexample_insight: false,
+    },
+  };
+
+  assert.deepEqual(realmSafe(createTaskRuntimeState()), {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+    debate: null,
+  });
+
+  const firstUnlockResult = handleResolvedCourseTaskProgress(
+    rootState,
+    { id: "course_dao_a", kind: "course", skill: "dao" },
+    {
+      taskDefs: TASK_DEFS,
+    }
+  );
+  assert.equal(firstUnlockResult, null);
+  assert.equal(rootState.tasks.weeklyProgress.daoCompleted, 1);
+
+  const unlockedTask = handleResolvedCourseTaskProgress(
+    rootState,
+    { id: "course_dao_b", kind: "course", skill: "dao" },
+    {
+      taskDefs: TASK_DEFS,
+    }
+  );
+
+  assert.equal(rootState.tasks.weeklyProgress.daoCompleted, 2);
+  assert.ok(unlockedTask);
+  assert.equal(unlockedTask.type, "dao_debate");
+  assert.equal(unlockedTask.availableFromDay, 5);
+  assert.equal(unlockedTask.expiresOnDay, 10);
+  assert.deepEqual(realmSafe(unlockedTask.unlockFlags), ["dao_archive_insight"]);
+  assert.equal(getSchedulableTaskActivityIds(rootState, 4).has("dao_debate_task"), false);
+  assert.equal(getSchedulableTaskActivityIds(rootState, 5).has("dao_debate_task"), true);
 });
 
 test("dispatchSessionCommand falls back to runtime syncWeeklyTaskProgress when context does not inject it", () => {
