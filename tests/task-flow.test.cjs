@@ -31,6 +31,169 @@ function realmSafe(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function createCanvasContextStub() {
+  return new Proxy(
+    {},
+    {
+      get(target, property) {
+        if (property === "createLinearGradient" || property === "createRadialGradient") {
+          return () => ({ addColorStop() {} });
+        }
+        if (property === "measureText") {
+          return (text) => ({ width: String(text ?? "").length * 10 });
+        }
+        if (!(property in target)) {
+          target[property] = () => {};
+        }
+        return target[property];
+      },
+      set(target, property, value) {
+        target[property] = value;
+        return true;
+      },
+    }
+  );
+}
+
+function createDomElementStub(id, ctx) {
+  return {
+    id,
+    innerHTML: "",
+    textContent: "",
+    dataset: {},
+    style: {},
+    disabled: false,
+    classList: {
+      add() {},
+      remove() {},
+      toggle() {},
+    },
+    addEventListener() {},
+    removeEventListener() {},
+    querySelector(selector) {
+      return createDomElementStub(selector, ctx);
+    },
+    querySelectorAll() {
+      return [];
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 960, height: 540 };
+    },
+    getContext() {
+      return ctx;
+    },
+    focus() {},
+  };
+}
+
+function loadMainTaskFlowHarness() {
+  const ctx = createCanvasContextStub();
+  const selectorIds = [
+    "#game-canvas",
+    "#top-panel",
+    "#main-panel",
+    "#left-panel",
+    "#flow-panel",
+    "#log-panel",
+    "#status-line",
+    "#stats-toggle-btn",
+    "#progress-toggle-btn",
+    "#feedback-toggle-btn",
+    "#timetable-toggle-btn",
+    "#overlay-backdrop",
+    "#memory-stage",
+    "#info-modal",
+  ];
+  const elements = new Map(selectorIds.map((selector) => [selector, createDomElementStub(selector, ctx)]));
+  const context = {
+    window: {
+      GAME_DATA: {},
+      GAME_RUNTIME: {},
+    },
+    document: {
+      body: createDomElementStub("body", ctx),
+      documentElement: {
+        requestFullscreen: () => Promise.resolve(),
+      },
+      fullscreenElement: null,
+      exitFullscreen() {},
+      querySelector(selector) {
+        return elements.get(selector) || createDomElementStub(selector, ctx);
+      },
+      addEventListener() {},
+    },
+    structuredClone,
+    console,
+    performance: {
+      now: () => 0,
+    },
+    requestAnimationFrame: () => 1,
+    setTimeout,
+    clearTimeout,
+  };
+  context.globalThis = context;
+  context.window.window = context.window;
+
+  const dependencyFiles = [
+    "data/core.js",
+    "data/archetypes.js",
+    "data/activities.js",
+    "data/tasks.js",
+    "data/schedules.js",
+    "data/memory.js",
+    "data/story.js",
+    "data/events.js",
+    "data/copy.js",
+    "data/ui.js",
+    "src/domain/player.js",
+    "src/domain/schedule.js",
+    "src/domain/story.js",
+    "src/domain/route-stress.js",
+    "src/domain/task-system.js",
+    "src/domain/refining-minigame.js",
+    "src/domain/dao-debate-minigame.js",
+    "src/domain/activity.js",
+    "src/domain/random-event.js",
+    "src/domain/memory.js",
+    "src/domain/week-cycle.js",
+    "src/domain/summary.js",
+    "src/app/session.js",
+    "src/app/day-flow.js",
+    "src/app/night-flow.js",
+    "src/app/keyboard-controls.js",
+    "src/app/refining-view.js",
+    "src/app/dao-debate-view.js",
+    "src/app/info-modal-view.js",
+    "src/app/random-event-view.js",
+    "src/debug/state-export.js",
+  ];
+
+  dependencyFiles.forEach((file) => {
+    const fullPath = path.join(REPO_ROOT, file);
+    const code = fs.readFileSync(fullPath, "utf8");
+    vm.runInNewContext(code, context, { filename: fullPath });
+  });
+
+  const mainPath = path.join(REPO_ROOT, "main.js");
+  const mainSource = fs.readFileSync(mainPath, "utf8");
+  const wrappedMainSource = `
+    (() => {
+${mainSource}
+      globalThis.__MAIN_TASK_FLOW_API__ = {
+        beginTaskActivityForSlot,
+        playDaoDebateCardFromUi: typeof playDaoDebateCardFromUi === "function" ? playDaoDebateCardFromUi : null,
+        state,
+      };
+    })();
+  `;
+  vm.runInNewContext(wrappedMainSource, context, { filename: mainPath });
+
+  return {
+    windowObject: context.window,
+    api: context.__MAIN_TASK_FLOW_API__,
+  };
+}
+
 test("resolveSlotForFlowState enters task mode for artifact refining activity", () => {
   const calls = {
     applyActivityToState: 0,
@@ -882,4 +1045,93 @@ test("applyRefiningTaskRound returns cumulative terminal result on success", () 
   assert.equal(outcome.finalResult.success, true);
   assert.equal(rootState.taskRuntime.refining.totalScore, 3);
   assert.equal(rootState.tasks.active[0].attemptCount, 1);
+});
+
+test("beginTaskActivityForSlot creates a dao debate runtime session", () => {
+  const { api, windowObject } = loadMainTaskFlowHarness();
+  const { beginTaskActivityForSlot } = api;
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const state = {
+    mode: "resolving",
+    day: 5,
+    rng: () => 0,
+    tasks: {
+      active: [
+        {
+          id: "week-1-dao_debate",
+          type: "dao_debate",
+          activityId: "dao_debate_task",
+          status: "active",
+          availableFromDay: 5,
+          unlockFlags: ["dao_archive_insight"],
+        },
+      ],
+    },
+  };
+
+  const result = beginTaskActivityForSlot(
+    state,
+    {
+      id: "dao_debate_task",
+      kind: "task",
+      name: "道法论辩",
+      scene: "seminar",
+    },
+    2,
+    { taskDefs: TASK_DEFS }
+  );
+
+  assert.equal(result.enteredTask, true);
+  assert.equal(state.mode, "task");
+  assert.equal(state.taskRuntime.mode, "dao_debate_task");
+  assert.equal(state.taskRuntime.debate.topicId, "topic_1");
+  assert.equal(state.taskRuntime.refining, null);
+});
+
+test("playing the third dao debate card completes the task and resumes resolving flow", () => {
+  const { api } = loadMainTaskFlowHarness();
+  const { playDaoDebateCardFromUi, state } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.resolvingFlow = { slotIndex: 1, phase: "story", storyTrail: [], justAppended: false };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 0,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 3,
+      maxRounds: 3,
+      conviction: 4,
+      exposure: 0,
+      currentPrompt: { followupType: "press_principle", body: "最后追问" },
+      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      history: [],
+    },
+  };
+
+  playDaoDebateCardFromUi("uphold_principle");
+
+  assert.equal(state.mode, "resolving");
+  assert.equal(state.tasks.active[0].status, "completed");
+  assert.equal(state.tasks.completedMarks.includes("dao_debate"), true);
+  assert.equal(state.taskRuntime.debate, null);
 });

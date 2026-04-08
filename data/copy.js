@@ -146,24 +146,40 @@ const COPY = {
       speaker: "工坊导师",
     };
   },
-  taskAttemptResult(taskName, result = {}) {
+  taskAttemptResult(taskType, result = {}) {
+    if (taskType === "dao_debate") {
+      if (result.success) {
+        return {
+          title: `${result.taskName} · 辩成`,
+          body: `你接住了妙哉偶三轮追问，立论 ${result.conviction}，破绽 ${result.exposure}，本周论道标记已记录。`,
+          speaker: "妙哉偶",
+        };
+      }
+      return {
+        title: `${result.taskName} · 未稳`,
+        body: `这场论辩仍有破口，立论 ${result.conviction}，破绽 ${result.exposure}。剩余 ${result.remainingDays} 天，可再择时重试。`,
+        speaker: "妙哉偶",
+      };
+    }
+
+    const taskName = result.taskName || taskType || "炼器委托";
     const objectiveName = result.objectiveName || "炼器目标";
     if (result.success) {
       return {
         title: `${taskName} · 完成`,
-        body: `你完成了${objectiveName}，得分 ${result.score || 0}。本周委托印记已记录。`,
+        body: `你完成了${objectiveName}，得到 ${result.score || 0} 分。本周委托印记已记录。`,
         speaker: "工坊导师",
       };
     }
 
     const retryText =
       Number(result.remainingDays || 0) > 0
-        ? `还剩 ${result.remainingDays} 天可再次尝试。`
+        ? `剩余 ${result.remainingDays} 天可再次尝试。`
         : "已无剩余天数可再次尝试。";
 
     return {
       title: `${taskName} · 未达标`,
-      body: `本次尝试未达到${objectiveName}要求。得分 ${result.score || 0}。${retryText}`,
+      body: `本次尝试未达到${objectiveName}要求。得到 ${result.score || 0} 分。${retryText}`,
       speaker: "工坊导师",
     };
   },
