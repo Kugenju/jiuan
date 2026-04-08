@@ -1,6 +1,19 @@
 (() => {
   window.GAME_RUNTIME = window.GAME_RUNTIME || {};
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
+
   function buildDaoDebateTaskPanelState(input) {
     const taskText = input?.taskText || {};
     const session = input?.session || {};
@@ -22,7 +35,7 @@
       cards: (session.hand || []).map((card) => ({
         id: card.id,
         label: card.label,
-        tag: card.tag,
+        tagText: typeof taskText.daoDebateTag === "function" ? taskText.daoDebateTag(card.tag) : "",
       })),
       history: session.history || [],
     };
@@ -32,9 +45,9 @@
     const cardsHtml = (panelState?.cards || [])
       .map(
         (card) => `
-          <button class="activity-card" type="button" data-task-control="debate-card" data-debate-card="${card.id}">
-            <strong>${card.label || ""}</strong>
-            <small>${card.tag || ""}</small>
+          <button class="activity-card" type="button" data-task-control="debate-card" data-debate-card="${escapeAttr(card.id)}">
+            <strong>${escapeHtml(card.label || "")}</strong>
+            ${card.tagText ? `<small>${escapeHtml(card.tagText)}</small>` : ""}
           </button>
         `
       )
@@ -42,17 +55,17 @@
     return `
       <div class="planning-shell task-summary-shell dao-debate-shell">
         <div class="panel-title">
-          <h2>${panelState?.activityName || ""}</h2>
-          <span class="badge">${panelState?.roundText || ""}</span>
+          <h2>${escapeHtml(panelState?.activityName || "")}</h2>
+          <span class="badge">${escapeHtml(panelState?.roundText || "")}</span>
         </div>
         <div class="story-card focus-callout">
-          <strong>${panelState?.promptTitle || ""}</strong>
-          <small>${panelState?.promptBody || ""}</small>
-          <small>${panelState?.attemptCountText || ""}</small>
+          <strong>${escapeHtml(panelState?.promptTitle || "")}</strong>
+          <small>${escapeHtml(panelState?.promptBody || "")}</small>
+          <small>${escapeHtml(panelState?.attemptCountText || "")}</small>
         </div>
         <div class="planning-meta-grid">
-          <div class="story-card"><strong>${panelState?.convictionText || ""}</strong></div>
-          <div class="story-card"><strong>${panelState?.exposureText || ""}</strong></div>
+          <div class="story-card"><strong>${escapeHtml(panelState?.convictionText || "")}</strong></div>
+          <div class="story-card"><strong>${escapeHtml(panelState?.exposureText || "")}</strong></div>
         </div>
         <div class="activity-grid planning-activity-grid">
           ${cardsHtml}

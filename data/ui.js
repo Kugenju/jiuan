@@ -207,6 +207,16 @@ const UI_TEXT = {
     daoExposure(value) {
       return `破绽 ${value}`;
     },
+    daoDebateTag(tag) {
+      const tagLabels = {
+        principle: "守义",
+        utility: "衡利",
+        authority: "引经",
+        experience: "亲历",
+        counterexample: "反证",
+      };
+      return tagLabels[tag] || "";
+    },
     objective: "委托目标",
     requirement: "材料要求",
     selected: "当前选牌",
