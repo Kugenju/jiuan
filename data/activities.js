@@ -309,7 +309,20 @@ const ACTIVITIES = [
     },
   },
   {
+    id: "dao_debate_task",
+    name: "道法论辩",
+    tone: "study",
+    kind: "task",
+    scene: "seminar",
+    skill: "dao",
+    summary: "在时限内应对妙哉偶的三轮论辩，成功则获得道法进展与周总结标记。",
+    storySegments: [
+      "道法阁深处灯影摇晃，妙哉偶已把第一道论题摆在案上，等你正面接住它的追问。",
+    ],
+  },
+  {
     id: "tribulation_forecasting",
+
     name: "上《天劫预测学》",
     tone: "study",
     kind: "course",

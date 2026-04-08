@@ -197,6 +197,7 @@ const UI_TEXT = {
   },
   task: {
     title: "炼器委托",
+    daoDebateTitle: "\u9053\u6cd5\u8bba\u8fa9",
     objective: "委托目标",
     requirement: "材料要求",
     selected: "当前选牌",
@@ -241,6 +242,15 @@ const UI_TEXT = {
     roundLabel(index) {
       return `R${index}`;
     },
+    daoDebateRound(current, max) {
+      return `\u7b2c ${current} / ${max} \u8f6e`;
+    },
+    daoConviction(value) {
+      return `\u7acb\u8bba ${value}`;
+    },
+    daoExposure(value) {
+      return `\u7834\u7837 ${value}`;
+    },
   },
   summary: {
     panelTitle(week, totalWeeks) {
@@ -258,6 +268,7 @@ const UI_TEXT = {
     taskMarks: "委托印记",
     taskMarkLabels: {
       artifact_refining: "炼器委托",
+      dao_debate: "\u9053\u6cd5\u8bba\u8fa9",
       default: "委托",
     },
   },
