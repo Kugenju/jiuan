@@ -92,7 +92,7 @@ const STORY_BEATS = [
       minSkill: { key: "dao", value: 2 },
     },
     effect: {},
-    note: "You found an archive clue from Miao's old annotations that can be cited in debate.",
+    note: "你从妙哉偶先前批注的旧案里摸到了一条可在论辩中援引的线索。",
   },
   {
     id: "dao_counterexample_insight",
@@ -101,7 +101,7 @@ const STORY_BEATS = [
       minDay: 3,
     },
     effect: {},
-    note: "You recorded a counterexample that can break vague doctrine in later debate.",
+    note: "你记下了一则足以拆开空泛义理的反例，之后论辩时可以动用它。",
   },
 ];
 

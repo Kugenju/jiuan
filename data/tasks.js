@@ -101,22 +101,22 @@ const DAO_DEBATE_CARDS = {
 const DAO_DEBATE_FOLLOWUPS = {
   press_principle: {
     id: "press_principle",
-    label: "Press Principle",
+    label: "逼问义理",
     prompt: "If your rule is universal, what principle keeps it consistent?",
   },
   press_utility: {
     id: "press_utility",
-    label: "Press Utility",
+    label: "逼问后果",
     prompt: "What outcomes can you prove, and who bears the cost?",
   },
   press_authority: {
     id: "press_authority",
-    label: "Press Authority",
+    label: "逼问依凭",
     prompt: "Which precedent supports you when circumstances are different?",
   },
   press_evasion: {
     id: "press_evasion",
-    label: "Press Evasion",
+    label: "逼问回避",
     prompt: "You dodged the point. Can you answer the challenge directly?",
   },
 };
