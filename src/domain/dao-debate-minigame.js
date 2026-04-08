@@ -128,6 +128,10 @@
   }
 
   function playDaoDebateCard(session, cardId, taskDef) {
+    if (session?.result || session?.roundIndex > session?.maxRounds) {
+      return session;
+    }
+
     const card = (session.hand || []).find((entry) => entry.id === cardId);
     if (!card) {
       return session;

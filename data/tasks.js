@@ -102,22 +102,22 @@ const DAO_DEBATE_FOLLOWUPS = {
   press_principle: {
     id: "press_principle",
     label: "逼问义理",
-    prompt: "If your rule is universal, what principle keeps it consistent?",
+    prompt: "\u903c\u95ee\u4e49\u7406\uff1a\u82e5\u6b64\u7406\u5f53\u771f\u80fd\u7acb\u4f4f\uff0c\u4e3a\u4f55\u5230\u4e86\u773c\u524d\u8fd9\u4e00\u6848\u5c31\u80fd\u4f8b\u5916\uff1f",
   },
   press_utility: {
     id: "press_utility",
     label: "逼问后果",
-    prompt: "What outcomes can you prove, and who bears the cost?",
+    prompt: "\u903c\u95ee\u540e\u679c\uff1a\u82e5\u771f\u6309\u6b64\u6cd5\u884c\u4e8b\uff0c\u4ee3\u4ef7\u7531\u8c01\u6765\u627f\u53d7\uff1f",
   },
   press_authority: {
     id: "press_authority",
     label: "逼问依凭",
-    prompt: "Which precedent supports you when circumstances are different?",
+    prompt: "\u903c\u95ee\u4f9d\u51ed\uff1a\u4f60\u6240\u63f4\u5f15\u7684\u65e7\u4f8b\uff0c\u771f\u80fd\u843d\u5230\u773c\u524d\u8fd9\u4e2a\u5c40\u9762\u4e0a\u5417\uff1f",
   },
   press_evasion: {
     id: "press_evasion",
     label: "逼问回避",
-    prompt: "You dodged the point. Can you answer the challenge directly?",
+    prompt: "\u903c\u95ee\u56de\u907f\uff1a\u4f60\u65b9\u624d\u907f\u5f00\u4e86\u8981\u5bb3\uff0c\u73b0\u5728\u53ef\u5426\u6b63\u9762\u4f5c\u7b54\uff1f",
   },
 };
 

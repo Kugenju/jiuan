@@ -60,9 +60,9 @@ test("playDaoDebateCard updates conviction, exposure, and followup type from the
     () => 0
   );
   session.hand = [
-    { id: "weigh_outcomes", label: "衡量得失", tag: "utility" },
-    { id: "cite_classic", label: "援引经典", tag: "authority" },
-    { id: "uphold_principle", label: "守其本义", tag: "principle" },
+    { id: "weigh_outcomes", label: "\u8861\u91cf\u5f97\u5931", tag: "utility" },
+    { id: "cite_classic", label: "\u63f4\u5f15\u7ecf\u5178", tag: "authority" },
+    { id: "uphold_principle", label: "\u5b88\u5176\u672c\u4e49", tag: "principle" },
   ];
 
   const next = playDaoDebateCard(session, "weigh_outcomes", TASK_DEFS.dao_debate);
@@ -70,7 +70,42 @@ test("playDaoDebateCard updates conviction, exposure, and followup type from the
   assert.equal(next.conviction, 2);
   assert.equal(next.exposure, 0);
   assert.equal(next.currentPrompt.followupType, "press_utility");
+  assert.equal(
+    next.currentPrompt.body,
+    "\u903c\u95ee\u540e\u679c\uff1a\u82e5\u771f\u6309\u6b64\u6cd5\u884c\u4e8b\uff0c\u4ee3\u4ef7\u7531\u8c01\u6765\u627f\u53d7\uff1f"
+  );
   assert.equal(next.history[0].cardId, "weigh_outcomes");
+});
+
+test("playDaoDebateCard is a no-op for settled sessions", () => {
+  const windowObject = loadScripts(["data/tasks.js", "src/domain/dao-debate-minigame.js"]);
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const { playDaoDebateCard } = windowObject.GAME_RUNTIME;
+
+  const session = {
+    topicId: "topic_1",
+    roundIndex: 4,
+    maxRounds: 3,
+    conviction: 5,
+    exposure: 1,
+    hand: [{ id: "weigh_outcomes", label: "\u8861\u91cf\u5f97\u5931", tag: "utility" }],
+    currentPrompt: {
+      followupType: "press_utility",
+      body: "\u903c\u95ee\u540e\u679c\uff1a\u82e5\u771f\u6309\u6b64\u6cd5\u884c\u4e8b\uff0c\u4ee3\u4ef7\u7531\u8c01\u6765\u627f\u53d7\uff1f",
+    },
+    history: [
+      {
+        roundIndex: 3,
+        cardId: "cite_classic",
+        tag: "authority",
+        scoreType: "ok",
+      },
+    ],
+    result: { status: "success", conviction: 5, exposure: 1, scoreLabel: "pass" },
+  };
+
+  const next = playDaoDebateCard(session, "weigh_outcomes", TASK_DEFS.dao_debate);
+  assert.deepEqual(realmSafe(next), realmSafe(session));
 });
 
 test("final round settlement recognizes pass and fail thresholds", () => {
@@ -92,6 +127,22 @@ test("final round settlement recognizes pass and fail thresholds", () => {
       )
     ),
     { status: "success", conviction: 5, exposure: 1, scoreLabel: "pass" }
+  );
+
+  assert.deepEqual(
+    realmSafe(
+      settleDaoDebateSession(
+        {
+          conviction: 4,
+          exposure: 0,
+          roundIndex: 4,
+          maxRounds: 3,
+          history: [],
+        },
+        TASK_DEFS.dao_debate
+      )
+    ),
+    { status: "success", conviction: 4, exposure: 0, scoreLabel: "pass" }
   );
 
   assert.deepEqual(
