@@ -85,6 +85,24 @@ const STORY_BEATS = [
     },
     note: "你和舍友在操场上搭上线，他愿意帮你补齐缺的器材。",
   },
+  {
+    id: "dao_archive_insight",
+    condition: {
+      activityId: "dao_seminar",
+      minSkill: { key: "dao", value: 2 },
+    },
+    effect: {},
+    note: "You found an archive clue from Miao's old annotations that can be cited in debate.",
+  },
+  {
+    id: "dao_counterexample_insight",
+    condition: {
+      activityId: "cultivation_ethics",
+      minDay: 3,
+    },
+    effect: {},
+    note: "You recorded a counterexample that can break vague doctrine in later debate.",
+  },
 ];
 
 const RANK_THRESHOLDS = [

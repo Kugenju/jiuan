@@ -99,10 +99,26 @@ const DAO_DEBATE_CARDS = {
 };
 
 const DAO_DEBATE_FOLLOWUPS = {
-  press_principle: { id: "press_principle", label: "逼问义理" },
-  press_utility: { id: "press_utility", label: "逼问后果" },
-  press_authority: { id: "press_authority", label: "逼问依凭" },
-  press_evasion: { id: "press_evasion", label: "逼问回避" },
+  press_principle: {
+    id: "press_principle",
+    label: "Press Principle",
+    prompt: "If your rule is universal, what principle keeps it consistent?",
+  },
+  press_utility: {
+    id: "press_utility",
+    label: "Press Utility",
+    prompt: "What outcomes can you prove, and who bears the cost?",
+  },
+  press_authority: {
+    id: "press_authority",
+    label: "Press Authority",
+    prompt: "Which precedent supports you when circumstances are different?",
+  },
+  press_evasion: {
+    id: "press_evasion",
+    label: "Press Evasion",
+    prompt: "You dodged the point. Can you answer the challenge directly?",
+  },
 };
 
 Object.assign(window.GAME_DATA, {
