@@ -182,6 +182,8 @@ ${mainSource}
       globalThis.__MAIN_TASK_FLOW_API__ = {
         beginTaskActivityForSlot,
         playDaoDebateCardFromUi: typeof playDaoDebateCardFromUi === "function" ? playDaoDebateCardFromUi : null,
+        getTaskStatusText: typeof getTaskStatusText === "function" ? getTaskStatusText : null,
+        syncUi: typeof syncUi === "function" ? syncUi : null,
         state,
       };
     })();
@@ -191,6 +193,7 @@ ${mainSource}
   return {
     windowObject: context.window,
     api: context.__MAIN_TASK_FLOW_API__,
+    elements,
   };
 }
 
@@ -1133,5 +1136,150 @@ test("playing the third dao debate card completes the task and resumes resolving
   assert.equal(state.mode, "resolving");
   assert.equal(state.tasks.active[0].status, "completed");
   assert.equal(state.tasks.completedMarks.includes("dao_debate"), true);
+  assert.equal(state.tasks.lastStory.title, "道法论辩 · 辩成");
+  assert.match(state.tasks.lastStory.body, /本周论道标记已记录/);
   assert.equal(state.taskRuntime.debate, null);
+});
+
+test("dao debate task mode shared ui uses debate wording instead of refining wording", () => {
+  const { api, elements } = loadMainTaskFlowHarness();
+  const { state, syncUi, getTaskStatusText } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.currentStory = { title: "道法论辩", body: "应对追问", speaker: "妙哉偶" };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 1,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 2,
+      maxRounds: 3,
+      conviction: 2,
+      exposure: 1,
+      currentPrompt: { title: "术可代德否", followupType: "press_principle", body: "继续回答" },
+      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      history: [],
+    },
+  };
+
+  syncUi();
+
+  assert.equal(getTaskStatusText(state), "请选择一张论辩牌回应当前追问。");
+  assert.match(elements.get("#status-line").textContent, /道法论辩/);
+  assert.doesNotMatch(elements.get("#status-line").textContent, /炼器/);
+  assert.match(elements.get("#flow-panel").innerHTML, /请选择一张论辩牌回应当前追问。/);
+  assert.doesNotMatch(elements.get("#flow-panel").innerHTML, /翻开并放置三张卡牌|炼器/);
+  assert.match(elements.get("#left-panel").innerHTML, /当前追问|立论 2|破绽 1/);
+  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /材料要求|未选中卡牌|炼器委托/);
+});
+
+test("playing the third dao debate card on failure keeps task active and records retry copy", () => {
+  const { api } = loadMainTaskFlowHarness();
+  const { playDaoDebateCardFromUi, state } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.skills = { dao: 3 };
+  state.resources = { insight: 2 };
+  state.resolvingFlow = { slotIndex: 1, phase: "story", storyTrail: [], justAppended: false };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 0,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 3,
+      maxRounds: 3,
+      conviction: 1,
+      exposure: 1,
+      currentPrompt: { followupType: "press_principle", body: "最后追问" },
+      hand: [{ id: "cite_classic", label: "引经典", tag: "authority" }],
+      history: [],
+    },
+  };
+
+  playDaoDebateCardFromUi("cite_classic");
+
+  assert.equal(state.mode, "resolving");
+  assert.equal(state.tasks.active[0].status, "active");
+  assert.equal(state.tasks.active[0].attemptCount, 1);
+  assert.equal(state.tasks.active[0].rewardClaimed, false);
+  assert.equal(state.skills.dao, 3);
+  assert.equal(state.resources.insight, 2);
+  assert.equal(state.tasks.completedMarks.includes("dao_debate"), false);
+  assert.deepEqual(realmSafe(state.taskRuntime), {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+    debate: null,
+  });
+  assert.equal(state.resolvingFlow.phase, "result");
+  assert.equal(state.resolvingFlow.slotIndex, 1);
+  assert.equal(state.tasks.lastStory.title, "道法论辩 · 未稳");
+  assert.match(state.tasks.lastStory.body, /剩余 6 天/);
+  assert.match(state.tasks.lastStory.body, /立论 1，破绽 2/);
+});
+
+test("taskAttemptResult uses dao debate success and retry copy branches", () => {
+  const windowObject = loadScripts(["data/copy.js"]);
+  const { COPY } = windowObject.GAME_DATA;
+
+  const success = COPY.taskAttemptResult("dao_debate", {
+    taskName: "道法论辩",
+    success: true,
+    conviction: 5,
+    exposure: 1,
+  });
+  assert.equal(success.title, "道法论辩 · 辩成");
+  assert.match(success.body, /立论 5，破绽 1/);
+  assert.match(success.body, /本周论道标记已记录/);
+
+  const failure = COPY.taskAttemptResult("dao_debate", {
+    taskName: "道法论辩",
+    success: false,
+    conviction: 2,
+    exposure: 3,
+    remainingDays: 4,
+  });
+  assert.equal(failure.title, "道法论辩 · 未稳");
+  assert.match(failure.body, /立论 2，破绽 3/);
+  assert.match(failure.body, /剩余 4 天，可再择时重试/);
 });
