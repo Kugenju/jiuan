@@ -86,6 +86,7 @@ test("artifact and dao debate task configs are exported with task activity metad
     "press_principle",
     "press_utility",
   ]);
+  assert.equal(DAO_DEBATE_FOLLOWUPS.press_utility.id, "press_utility");
 
   assert.equal(UI_TEXT.summary.taskMarkLabels.dao_debate, "\u9053\u6cd5\u8bba\u8fa9");
   assert.deepEqual(Object.keys(REFINING_CARD_TYPES).sort(), ["guanxing", "lingduan", "lingshi", "mujing", "xuantie"]);
