@@ -197,7 +197,26 @@ const UI_TEXT = {
   },
   task: {
     title: "炼器委托",
-    daoDebateTitle: "\u9053\u6cd5\u8bba\u8fa9",
+    daoDebateTitle: "道法论辩",
+    daoDebateRound(current, max) {
+      return `第 ${current} / ${max} 轮`;
+    },
+    daoConviction(value) {
+      return `立论 ${value}`;
+    },
+    daoExposure(value) {
+      return `破绽 ${value}`;
+    },
+    daoDebateTag(tag) {
+      const tagLabels = {
+        principle: "守义",
+        utility: "衡利",
+        authority: "引经",
+        experience: "亲历",
+        counterexample: "反证",
+      };
+      return tagLabels[tag] || "";
+    },
     objective: "委托目标",
     requirement: "材料要求",
     selected: "当前选牌",
@@ -242,15 +261,6 @@ const UI_TEXT = {
     roundLabel(index) {
       return `R${index}`;
     },
-    daoDebateRound(current, max) {
-      return `\u7b2c ${current} / ${max} \u8f6e`;
-    },
-    daoConviction(value) {
-      return `\u7acb\u8bba ${value}`;
-    },
-    daoExposure(value) {
-      return `\u7834\u7837 ${value}`;
-    },
   },
   summary: {
     panelTitle(week, totalWeeks) {
@@ -268,7 +278,7 @@ const UI_TEXT = {
     taskMarks: "委托印记",
     taskMarkLabels: {
       artifact_refining: "炼器委托",
-      dao_debate: "\u9053\u6cd5\u8bba\u8fa9",
+      dao_debate: "道法论辩",
       default: "委托",
     },
   },

@@ -88,7 +88,7 @@ function createGameState(options) {
       ? window.GAME_RUNTIME.createTaskState
       : () => ({
           active: [],
-          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0, daoCompleted: 0 },
           completedMarks: [],
           lastStory: null,
         });
@@ -103,6 +103,7 @@ function createGameState(options) {
           mode: null,
           result: null,
           refining: null,
+          debate: null,
         });
   const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(options);
 
@@ -209,9 +210,12 @@ function carryOverActiveTasksForNextWeek(rootState, fallbackTotalDays = 7) {
         return null;
       }
       const unlockDay = Number(task.unlockDay);
+      const shiftedUnlockDay = Number.isFinite(unlockDay) ? unlockDay - totalDays : task.unlockDay;
+      const availableFromDay = Number(task.availableFromDay);
       return {
         ...task,
-        unlockDay: Number.isFinite(unlockDay) ? unlockDay - totalDays : task.unlockDay,
+        unlockDay: shiftedUnlockDay,
+        availableFromDay: Number.isFinite(availableFromDay) ? availableFromDay - totalDays : shiftedUnlockDay,
         expiresOnDay: shiftedExpiresOnDay,
       };
     })
@@ -226,7 +230,7 @@ function resetTaskStateForWeek(rootState, context) {
       ? window.GAME_RUNTIME.createTaskState
       : () => ({
           active: [],
-          weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
+          weeklyProgress: { craftCompleted: 0, craftTotal: 0, daoCompleted: 0 },
           completedMarks: [],
           lastStory: null,
         });
@@ -241,6 +245,7 @@ function resetTaskStateForWeek(rootState, context) {
           mode: null,
           result: null,
           refining: null,
+          debate: null,
         });
   const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(context);
   const carryOverTasks = carryOverActiveTasksForNextWeek(rootState, context.totalDays);

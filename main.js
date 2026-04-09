@@ -94,10 +94,14 @@ const {
   placeRefiningCardInSlot,
   resolveRefiningAttempt,
   applyRefiningTaskRound,
+  createDaoDebateSessionState,
+  playDaoDebateCard,
   buildRefiningStageView,
   hitTestRefiningStage,
   buildRefiningTaskPanelState,
   renderRefiningTaskPanelHtml,
+  buildDaoDebateTaskPanelState,
+  renderDaoDebateTaskPanelHtml,
   handleResolvedCourseTaskProgress: handleResolvedCourseTaskProgressFromRuntime,
   expireTimedTasksForDay: expireTimedTasksForDayFromRuntime,
   getSchedulableTaskActivityIds: getSchedulableTaskActivityIdsFromRuntime,
@@ -514,6 +518,10 @@ function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) 
       taskDef.id === "artifact_refining" && typeof createRefiningSessionState === "function"
         ? createRefiningSessionState(taskDef, rootState.rng)
         : null,
+    debate:
+      taskDef.id === "dao_debate" && typeof createDaoDebateSessionState === "function"
+        ? createDaoDebateSessionState(taskDef, activeTask, rootState.rng)
+        : null,
   };
 
   return { ok: true, enteredTask: true };
@@ -526,6 +534,7 @@ function createEmptyTaskRuntimeState() {
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   };
 }
 
@@ -584,6 +593,11 @@ function getActiveRefiningAttempt(rootState = state) {
   return getActiveRefiningSession(rootState)?.attempt || null;
 }
 
+function getActiveDaoDebateSession(rootState = state) {
+  const debate = getActiveTaskRuntime(rootState).debate;
+  return debate && Array.isArray(debate.hand) ? debate : null;
+}
+
 function getActiveTaskActivity(rootState = state) {
   const runtime = getActiveTaskRuntime(rootState);
   return getActivity(runtime.mode) || getActivity(getActiveTaskDef(rootState)?.activityId) || null;
@@ -625,6 +639,16 @@ function getSelectedTaskCard(rootState = state) {
 
 function getTaskStatusText(rootState = state) {
   const taskText = UI_TEXT.task || {};
+  const taskDef = getActiveTaskDef(rootState);
+  if (taskDef?.id === "dao_debate") {
+    const session = getActiveDaoDebateSession(rootState);
+    if (!session) {
+      return "论辩暂未就绪。";
+    }
+    return Array.isArray(session.hand) && session.hand.length
+      ? "请选择一张论辩牌回应当前追问。"
+      : "本轮论辩牌已出尽，等待结算。";
+  }
   const attempt = getActiveRefiningAttempt(rootState);
   if (!attempt) {
     return taskText.pending || "";
@@ -641,8 +665,38 @@ function getTaskStatusText(rootState = state) {
   return taskText.pending || "";
 }
 
+function getTaskActivityName(rootState = state, taskDef = getActiveTaskDef(rootState)) {
+  const activityName = getActiveTaskActivity(rootState)?.name;
+  if (activityName) {
+    return activityName;
+  }
+  if (taskDef?.id === "dao_debate") {
+    return UI_TEXT.task?.daoDebateTitle || "道法论辩";
+  }
+  return UI_TEXT.task?.title || "炼器委托";
+}
+
+function getTaskFlowHintText(rootState = state) {
+  const taskDef = getActiveTaskDef(rootState);
+  if (taskDef?.id === "dao_debate") {
+    return getTaskStatusText(rootState);
+  }
+  return UI_TEXT.flow.taskHint || getTaskStatusText(rootState);
+}
+
 function resetTaskRuntimeForState(rootState = state) {
   rootState.taskRuntime = createEmptyTaskRuntimeState();
+}
+
+function getTaskStatusLineText(rootState = state) {
+  const taskDef = getActiveTaskDef(rootState);
+  const activityName = getTaskActivityName(rootState, taskDef);
+  if (taskDef?.id === "dao_debate") {
+    return `第 ${rootState.day} 天论辩进行中：${activityName}`;
+  }
+  return typeof UI_TEXT.statusLine.task === "function"
+    ? UI_TEXT.statusLine.task(rootState.day, activityName)
+    : activityName;
 }
 
 function clamp(value, min, max) {
@@ -1573,7 +1627,8 @@ function finishTaskAttempt(result) {
     task.rewardClaimed = true;
   }
 
-  const detail = RUNTIME_COPY.taskAttemptResult(activity.name, {
+  const detail = RUNTIME_COPY.taskAttemptResult(taskDef.id, {
+    taskName: activity.name,
     success: finalResult.success,
     score: finalResult.score,
     recipeKey: finalResult.recipeKey,
@@ -1585,6 +1640,57 @@ function finishTaskAttempt(result) {
     : Math.min(state.resolvingFlow.slotIndex, SLOT_NAMES.length - 1);
 
   pushTimeline(slotIndex, activity, detail.body);
+  addLog(detail.title, detail.body);
+  state.tasks.lastStory = structuredClone(detail);
+  resumeResolvingAfterTaskAttempt(state, detail, {
+    slotNames: SLOT_NAMES,
+    uiText: UI_TEXT,
+    resetTaskRuntime: resetTaskRuntimeForState,
+  });
+  syncUi();
+  return true;
+}
+
+function playDaoDebateCardFromUi(cardId) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const task = getActiveTaskInstance(state);
+  const taskDef = getActiveTaskDef(state);
+  const session = getActiveDaoDebateSession(state);
+  if (!task || !taskDef || !session || typeof playDaoDebateCard !== "function") {
+    return false;
+  }
+
+  const nextSession = playDaoDebateCard(session, cardId, taskDef);
+  state.taskRuntime.debate = nextSession.result ? null : nextSession;
+
+  if (!nextSession.result) {
+    syncUi();
+    return true;
+  }
+
+  task.attemptCount = Number(task.attemptCount || 0) + 1;
+  if (nextSession.result.status === "success") {
+    applyEffectBundle(taskDef.rewards);
+    normalizeState();
+    const summaryMark = taskDef.rewards?.summaryMark;
+    if (summaryMark && !state.tasks.completedMarks.includes(summaryMark)) {
+      state.tasks.completedMarks.push(summaryMark);
+    }
+    task.status = "completed";
+    task.rewardClaimed = true;
+  }
+
+  const detail = RUNTIME_COPY.taskAttemptResult(taskDef.id, {
+    taskName: getActiveTaskActivity(state)?.name || UI_TEXT.task?.daoDebateTitle || "道法论辩",
+    success: nextSession.result.status === "success",
+    conviction: nextSession.result.conviction,
+    exposure: nextSession.result.exposure,
+    remainingDays: getTaskRemainingDays(state, task),
+  });
+
+  pushTimeline(state.taskRuntime.pendingSlotIndex, getActiveTaskActivity(state), detail.body);
   addLog(detail.title, detail.body);
   state.tasks.lastStory = structuredClone(detail);
   resumeResolvingAfterTaskAttempt(state, detail, {
@@ -1813,7 +1919,26 @@ function drawResolvingScene() {
 function drawTaskScene() {
   const task = getActiveTaskInstance(state);
   const taskDef = getActiveTaskDef(state);
-  const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "炼器委托" };
+  const activityName = getTaskActivityName(state, taskDef);
+  if (taskDef?.id === "dao_debate") {
+    const session = getActiveDaoDebateSession(state);
+    drawAcademyBackdrop("#efe6d8", "#d7c2a7");
+    drawBanner(
+      UI_TEXT.canvas.taskTitle(state.day, activityName),
+      UI_TEXT.canvas.taskSubtitle(getTaskRemainingDays(state, task), "妙哉偶")
+    );
+    ctx.fillStyle = CANVAS_THEME.panelFill;
+    ctx.fillRect(72, 180, 816, 300);
+    ctx.strokeStyle = CANVAS_THEME.panelStroke;
+    ctx.strokeRect(72, 180, 816, 300);
+    ctx.font = "24px 'Microsoft YaHei'";
+    ctx.fillStyle = CANVAS_THEME.panelText;
+    ctx.fillText(session?.currentPrompt?.title || "术可代德否", 112, 228);
+    wrapText(session?.currentPrompt?.body || "", 112, 270, 736, 30, CANVAS_THEME.panelMuted);
+    ctx.fillText(`立论 ${session?.conviction || 0}`, 112, 420);
+    ctx.fillText(`破绽 ${session?.exposure || 0}`, 252, 420);
+    return;
+  }
   const attempt = getActiveRefiningAttempt(state);
   const stageView =
     attempt && typeof buildRefiningStageView === "function"
@@ -1822,12 +1947,12 @@ function drawTaskScene() {
   const remainingDays = getTaskRemainingDays(state, task);
   const title =
     typeof UI_TEXT.canvas?.taskTitle === "function"
-      ? UI_TEXT.canvas.taskTitle(state.day, activity.name)
-      : `第 ${state.day} 天 · ${activity.name}`;
+      ? UI_TEXT.canvas.taskTitle(state.day, activityName)
+      : `第 ${state.day} 天 · ${activityName}`;
   const subtitle =
     typeof UI_TEXT.canvas?.taskSubtitle === "function"
-      ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activity.name)
-      : `剩余 ${remainingDays} 天 · ${taskDef?.objective?.name || activity.name}`;
+      ? UI_TEXT.canvas.taskSubtitle(remainingDays, taskDef?.objective?.name || activityName)
+      : `剩余 ${remainingDays} 天 · ${taskDef?.objective?.name || activityName}`;
   const taskAreaTop = 170;
   const taskAreaHeight = 340;
   const taskAreaBottom = taskAreaTop + taskAreaHeight;
@@ -2455,9 +2580,7 @@ function syncUi() {
       : state.mode === "resolving"
         ? UI_TEXT.statusLine.resolving(state.day, Math.round(state.progress * 100), state.resolvingFlow.autoplay)
         : state.mode === "task"
-          ? typeof UI_TEXT.statusLine.task === "function"
-          ? UI_TEXT.statusLine.task(state.day, getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "炼器任务"))
-            : getActiveTaskActivity(state)?.name || (UI_TEXT.task?.title || "炼器委托")
+          ? getTaskStatusLineText(state)
         : state.mode === "memory"
           ? UI_TEXT.statusLine.memory(state.day)
           : state.mode === "summary"
@@ -2597,8 +2720,8 @@ function renderFlowPanel() {
                   ? state.resolvingFlow.autoplay
                     ? UI_TEXT.flow.resolvingHintAuto
                     : UI_TEXT.flow.resolvingHintClick
-                  : state.mode === "task"
-                    ? UI_TEXT.flow.taskHint || getTaskStatusText(state)
+                : state.mode === "task"
+                    ? getTaskFlowHintText(state)
                   : state.mode === "memory"
                     ? UI_TEXT.flow.memoryHint
                     : UI_TEXT.flow.summaryHint
@@ -3212,6 +3335,20 @@ function renderTaskPanel() {
   const taskText = UI_TEXT.task || {};
   const task = getActiveTaskInstance(state);
   const taskDef = getActiveTaskDef(state);
+  if (taskDef?.id === "dao_debate") {
+    const session = getActiveDaoDebateSession(state);
+    const panelState = buildDaoDebateTaskPanelState({
+      activity: getActiveTaskActivity(state),
+      task,
+      session,
+      taskText,
+    });
+    mainPanel.innerHTML = renderDaoDebateTaskPanelHtml(panelState);
+    mainPanel.querySelectorAll("[data-debate-card]").forEach((button) => {
+      button.addEventListener("click", () => playDaoDebateCardFromUi(button.dataset.debateCard));
+    });
+    return;
+  }
   const session = getActiveRefiningSession(state);
   const activity = getActiveTaskActivity(state) || { name: taskText.title || "炼器委托", summary: "" };
   const attempt = getActiveRefiningAttempt(state);
@@ -3576,10 +3713,37 @@ function renderLeftPanel() {
     return;
   }
 
-if (state.mode === "task") {
+  if (state.mode === "task") {
     const task = getActiveTaskInstance(state);
     const taskDef = getActiveTaskDef(state);
-    const activity = getActiveTaskActivity(state) || { name: UI_TEXT.task?.title || "炼器委托" };
+    const activityName = getTaskActivityName(state, taskDef);
+    if (taskDef?.id === "dao_debate") {
+      const session = getActiveDaoDebateSession(state);
+      const promptTitle = session?.currentPrompt?.title || "当前追问";
+      const promptBody = session?.currentPrompt?.body || "请继续回应妙哉偶的追问。";
+      leftPanel.innerHTML = `
+        <div class="panel-title">
+          <h2>${UI_TEXT.left.scheduleTitle}</h2>
+          <span class="badge">${typeof UI_TEXT.task?.remainingDays === "function" ? UI_TEXT.task.remainingDays(getTaskRemainingDays(state, task)) : getTaskRemainingDays(state, task)}</span>
+        </div>
+        <div class="left-info-grid">
+          <div class="left-info-card">
+            <strong>${activityName}</strong>
+            <small>当前追问</small>
+            <small>${promptTitle}</small>
+            <small>${promptBody}</small>
+          </div>
+          <div class="left-info-card">
+            <strong>论辩态势</strong>
+            <small>立论 ${session?.conviction || 0}</small>
+            <small>破绽 ${session?.exposure || 0}</small>
+            <small>${getTaskStatusText(state)}</small>
+          </div>
+        </div>
+      `;
+      return;
+    }
+    const activity = getActiveTaskActivity(state) || { name: activityName };
     leftPanel.innerHTML = `
       <div class="panel-title">
         <h2>${UI_TEXT.left.scheduleTitle}</h2>

@@ -353,6 +353,7 @@ function createEmptyTaskRuntimeState() {
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   };
 }
 

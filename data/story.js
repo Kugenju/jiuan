@@ -85,6 +85,24 @@ const STORY_BEATS = [
     },
     note: "你和舍友在操场上搭上线，他愿意帮你补齐缺的器材。",
   },
+  {
+    id: "dao_archive_insight",
+    condition: {
+      activityId: "dao_seminar",
+      minSkill: { key: "dao", value: 2 },
+    },
+    effect: {},
+    note: "你从妙哉偶先前批注的旧案里摸到了一条可在论辩中援引的线索。",
+  },
+  {
+    id: "dao_counterexample_insight",
+    condition: {
+      activityId: "cultivation_ethics",
+      minDay: 3,
+    },
+    effect: {},
+    note: "你记下了一则足以拆开空泛义理的反例，之后论辩时可以动用它。",
+  },
 ];
 
 const RANK_THRESHOLDS = [

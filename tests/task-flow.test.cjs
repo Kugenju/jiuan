@@ -31,6 +31,172 @@ function realmSafe(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function createCanvasContextStub() {
+  return new Proxy(
+    {},
+    {
+      get(target, property) {
+        if (property === "createLinearGradient" || property === "createRadialGradient") {
+          return () => ({ addColorStop() {} });
+        }
+        if (property === "measureText") {
+          return (text) => ({ width: String(text ?? "").length * 10 });
+        }
+        if (!(property in target)) {
+          target[property] = () => {};
+        }
+        return target[property];
+      },
+      set(target, property, value) {
+        target[property] = value;
+        return true;
+      },
+    }
+  );
+}
+
+function createDomElementStub(id, ctx) {
+  return {
+    id,
+    innerHTML: "",
+    textContent: "",
+    dataset: {},
+    style: {},
+    disabled: false,
+    classList: {
+      add() {},
+      remove() {},
+      toggle() {},
+    },
+    addEventListener() {},
+    removeEventListener() {},
+    querySelector(selector) {
+      return createDomElementStub(selector, ctx);
+    },
+    querySelectorAll() {
+      return [];
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 960, height: 540 };
+    },
+    getContext() {
+      return ctx;
+    },
+    focus() {},
+  };
+}
+
+function loadMainTaskFlowHarness() {
+  const ctx = createCanvasContextStub();
+  const selectorIds = [
+    "#game-canvas",
+    "#top-panel",
+    "#main-panel",
+    "#left-panel",
+    "#flow-panel",
+    "#log-panel",
+    "#status-line",
+    "#stats-toggle-btn",
+    "#progress-toggle-btn",
+    "#feedback-toggle-btn",
+    "#timetable-toggle-btn",
+    "#overlay-backdrop",
+    "#memory-stage",
+    "#info-modal",
+  ];
+  const elements = new Map(selectorIds.map((selector) => [selector, createDomElementStub(selector, ctx)]));
+  const context = {
+    window: {
+      GAME_DATA: {},
+      GAME_RUNTIME: {},
+    },
+    document: {
+      body: createDomElementStub("body", ctx),
+      documentElement: {
+        requestFullscreen: () => Promise.resolve(),
+      },
+      fullscreenElement: null,
+      exitFullscreen() {},
+      querySelector(selector) {
+        return elements.get(selector) || createDomElementStub(selector, ctx);
+      },
+      addEventListener() {},
+    },
+    structuredClone,
+    console,
+    performance: {
+      now: () => 0,
+    },
+    requestAnimationFrame: () => 1,
+    setTimeout,
+    clearTimeout,
+  };
+  context.globalThis = context;
+  context.window.window = context.window;
+
+  const dependencyFiles = [
+    "data/core.js",
+    "data/archetypes.js",
+    "data/activities.js",
+    "data/tasks.js",
+    "data/schedules.js",
+    "data/memory.js",
+    "data/story.js",
+    "data/events.js",
+    "data/copy.js",
+    "data/ui.js",
+    "src/domain/player.js",
+    "src/domain/schedule.js",
+    "src/domain/story.js",
+    "src/domain/route-stress.js",
+    "src/domain/task-system.js",
+    "src/domain/refining-minigame.js",
+    "src/domain/dao-debate-minigame.js",
+    "src/domain/activity.js",
+    "src/domain/random-event.js",
+    "src/domain/memory.js",
+    "src/domain/week-cycle.js",
+    "src/domain/summary.js",
+    "src/app/session.js",
+    "src/app/day-flow.js",
+    "src/app/night-flow.js",
+    "src/app/keyboard-controls.js",
+    "src/app/refining-view.js",
+    "src/app/dao-debate-view.js",
+    "src/app/info-modal-view.js",
+    "src/app/random-event-view.js",
+    "src/debug/state-export.js",
+  ];
+
+  dependencyFiles.forEach((file) => {
+    const fullPath = path.join(REPO_ROOT, file);
+    const code = fs.readFileSync(fullPath, "utf8");
+    vm.runInNewContext(code, context, { filename: fullPath });
+  });
+
+  const mainPath = path.join(REPO_ROOT, "main.js");
+  const mainSource = fs.readFileSync(mainPath, "utf8");
+  const wrappedMainSource = `
+    (() => {
+${mainSource}
+      globalThis.__MAIN_TASK_FLOW_API__ = {
+        beginTaskActivityForSlot,
+        playDaoDebateCardFromUi: typeof playDaoDebateCardFromUi === "function" ? playDaoDebateCardFromUi : null,
+        getTaskStatusText: typeof getTaskStatusText === "function" ? getTaskStatusText : null,
+        syncUi: typeof syncUi === "function" ? syncUi : null,
+        state,
+      };
+    })();
+  `;
+  vm.runInNewContext(wrappedMainSource, context, { filename: mainPath });
+
+  return {
+    windowObject: context.window,
+    api: context.__MAIN_TASK_FLOW_API__,
+    elements,
+  };
+}
+
 test("resolveSlotForFlowState enters task mode for artifact refining activity", () => {
   const calls = {
     applyActivityToState: 0,
@@ -66,6 +232,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     },
     resolvingFlow: {
       storyTrail: [],
@@ -109,6 +276,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
         mode: activity.id,
         result: null,
         refining: null,
+        debate: null,
       };
       return { ok: true, enteredTask: true };
     },
@@ -124,6 +292,7 @@ test("resolveSlotForFlowState enters task mode for artifact refining activity", 
     mode: "artifact_refining_task",
     result: null,
     refining: null,
+    debate: null,
   });
   assert.equal(calls.beginTaskActivityForSlot, 1);
   assert.equal(calls.applyActivityToState, 0);
@@ -258,6 +427,7 @@ test("resolveSlotForFlowState shows unlock story after the final craft course un
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     },
     resolvingFlow: {
       storyTrail: [],
@@ -325,6 +495,7 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
         deck: [],
         slots: ["card-1", "card-2", "card-3"],
       },
+      debate: null,
     },
     resolvingFlow: {
       phase: "result",
@@ -360,6 +531,7 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   });
   assert.deepEqual(realmSafe(rootState.resolvingFlow.storyTrail), [detail]);
   assert.equal(rootState.currentStory.title, "task result");
@@ -553,6 +725,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
       mode: null,
       result: null,
       refining: null,
+      debate: null,
     }),
   };
   const windowObject = loadScripts(["src/app/session.js"], { runtime });
@@ -595,7 +768,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
     },
     tasks: {
       active: [
-        { id: "week-1-artifact_refining", status: "active", unlockDay: 1, expiresOnDay: 9 },
+        { id: "week-1-artifact_refining", status: "active", unlockDay: 1, availableFromDay: 8, expiresOnDay: 9 },
         { id: "week-1-old-task", status: "active", unlockDay: 2, expiresOnDay: 7 },
       ],
       weeklyProgress: { craftCompleted: 1, craftTotal: 1 },
@@ -608,6 +781,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
       mode: "artifact_refining_task",
       result: { success: true, score: 3 },
       refining: { slots: ["card-0", "card-1", "card-2"] },
+      debate: null,
     },
     weekActions: ["task"],
     totalDays: 7,
@@ -630,7 +804,9 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
   assert.equal(rootState.week, 2);
   assert.equal(rootState.day, 1);
   assert.deepEqual(realmSafe(rootState.tasks), {
-    active: [{ id: "week-1-artifact_refining", status: "active", unlockDay: -6, expiresOnDay: 2 }],
+    active: [
+      { id: "week-1-artifact_refining", status: "active", unlockDay: -6, availableFromDay: 1, expiresOnDay: 2 },
+    ],
     weeklyProgress: { craftCompleted: 0, craftTotal: 0 },
     completedMarks: [],
     lastStory: null,
@@ -641,6 +817,7 @@ test("dispatchSessionCommand carries unexpired active tasks into next week", () 
     mode: null,
     result: null,
     refining: null,
+    debate: null,
   });
 });
 
@@ -773,6 +950,7 @@ test("buildTextStateExport snapshots task system state for debugging", () => {
         revealsRemaining: 2,
         selectedCardId: "card-0",
       },
+      debate: null,
     },
     summary: null,
   };
@@ -821,6 +999,7 @@ test("applyRefiningTaskRound keeps task runtime active when cumulative score is 
       mode: "artifact_refining_task",
       result: null,
       refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+      debate: null,
     },
   };
 
@@ -852,6 +1031,7 @@ test("applyRefiningTaskRound returns cumulative terminal result on success", () 
       mode: "artifact_refining_task",
       result: null,
       refining: createRefiningSessionState(TASK_DEFS.artifact_refining, () => 0.25),
+      debate: null,
     },
   };
   rootState.taskRuntime.refining.totalScore = 2;
@@ -868,4 +1048,238 @@ test("applyRefiningTaskRound returns cumulative terminal result on success", () 
   assert.equal(outcome.finalResult.success, true);
   assert.equal(rootState.taskRuntime.refining.totalScore, 3);
   assert.equal(rootState.tasks.active[0].attemptCount, 1);
+});
+
+test("beginTaskActivityForSlot creates a dao debate runtime session", () => {
+  const { api, windowObject } = loadMainTaskFlowHarness();
+  const { beginTaskActivityForSlot } = api;
+  const { TASK_DEFS } = windowObject.GAME_DATA;
+  const state = {
+    mode: "resolving",
+    day: 5,
+    rng: () => 0,
+    tasks: {
+      active: [
+        {
+          id: "week-1-dao_debate",
+          type: "dao_debate",
+          activityId: "dao_debate_task",
+          status: "active",
+          availableFromDay: 5,
+          unlockFlags: ["dao_archive_insight"],
+        },
+      ],
+    },
+  };
+
+  const result = beginTaskActivityForSlot(
+    state,
+    {
+      id: "dao_debate_task",
+      kind: "task",
+      name: "道法论辩",
+      scene: "seminar",
+    },
+    2,
+    { taskDefs: TASK_DEFS }
+  );
+
+  assert.equal(result.enteredTask, true);
+  assert.equal(state.mode, "task");
+  assert.equal(state.taskRuntime.mode, "dao_debate_task");
+  assert.equal(state.taskRuntime.debate.topicId, "topic_1");
+  assert.equal(state.taskRuntime.refining, null);
+});
+
+test("playing the third dao debate card completes the task and resumes resolving flow", () => {
+  const { api } = loadMainTaskFlowHarness();
+  const { playDaoDebateCardFromUi, state } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.resolvingFlow = { slotIndex: 1, phase: "story", storyTrail: [], justAppended: false };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 0,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 3,
+      maxRounds: 3,
+      conviction: 4,
+      exposure: 0,
+      currentPrompt: { followupType: "press_principle", body: "最后追问" },
+      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      history: [],
+    },
+  };
+
+  playDaoDebateCardFromUi("uphold_principle");
+
+  assert.equal(state.mode, "resolving");
+  assert.equal(state.tasks.active[0].status, "completed");
+  assert.equal(state.tasks.completedMarks.includes("dao_debate"), true);
+  assert.equal(state.tasks.lastStory.title, "道法论辩 · 辩成");
+  assert.match(state.tasks.lastStory.body, /本周论道标记已记录/);
+  assert.equal(state.taskRuntime.debate, null);
+});
+
+test("dao debate task mode shared ui uses debate wording instead of refining wording", () => {
+  const { api, elements } = loadMainTaskFlowHarness();
+  const { state, syncUi, getTaskStatusText } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.currentStory = { title: "道法论辩", body: "应对追问", speaker: "妙哉偶" };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 1,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 2,
+      maxRounds: 3,
+      conviction: 2,
+      exposure: 1,
+      currentPrompt: { title: "术可代德否", followupType: "press_principle", body: "继续回答" },
+      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      history: [],
+    },
+  };
+
+  syncUi();
+
+  assert.equal(getTaskStatusText(state), "请选择一张论辩牌回应当前追问。");
+  assert.match(elements.get("#status-line").textContent, /道法论辩/);
+  assert.doesNotMatch(elements.get("#status-line").textContent, /炼器/);
+  assert.match(elements.get("#flow-panel").innerHTML, /请选择一张论辩牌回应当前追问。/);
+  assert.doesNotMatch(elements.get("#flow-panel").innerHTML, /翻开并放置三张卡牌|炼器/);
+  assert.match(elements.get("#left-panel").innerHTML, /当前追问|立论 2|破绽 1/);
+  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /材料要求|未选中卡牌|炼器委托/);
+});
+
+test("playing the third dao debate card on failure keeps task active and records retry copy", () => {
+  const { api } = loadMainTaskFlowHarness();
+  const { playDaoDebateCardFromUi, state } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.skills = { dao: 3 };
+  state.resources = { insight: 2 };
+  state.resolvingFlow = { slotIndex: 1, phase: "story", storyTrail: [], justAppended: false };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 0,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 3,
+      maxRounds: 3,
+      conviction: 1,
+      exposure: 1,
+      currentPrompt: { followupType: "press_principle", body: "最后追问" },
+      hand: [{ id: "cite_classic", label: "引经典", tag: "authority" }],
+      history: [],
+    },
+  };
+
+  playDaoDebateCardFromUi("cite_classic");
+
+  assert.equal(state.mode, "resolving");
+  assert.equal(state.tasks.active[0].status, "active");
+  assert.equal(state.tasks.active[0].attemptCount, 1);
+  assert.equal(state.tasks.active[0].rewardClaimed, false);
+  assert.equal(state.skills.dao, 3);
+  assert.equal(state.resources.insight, 2);
+  assert.equal(state.tasks.completedMarks.includes("dao_debate"), false);
+  assert.deepEqual(realmSafe(state.taskRuntime), {
+    activeTaskId: null,
+    pendingSlotIndex: null,
+    mode: null,
+    result: null,
+    refining: null,
+    debate: null,
+  });
+  assert.equal(state.resolvingFlow.phase, "result");
+  assert.equal(state.resolvingFlow.slotIndex, 1);
+  assert.equal(state.tasks.lastStory.title, "道法论辩 · 未稳");
+  assert.match(state.tasks.lastStory.body, /剩余 6 天/);
+  assert.match(state.tasks.lastStory.body, /立论 1，破绽 2/);
+});
+
+test("taskAttemptResult uses dao debate success and retry copy branches", () => {
+  const windowObject = loadScripts(["data/copy.js"]);
+  const { COPY } = windowObject.GAME_DATA;
+
+  const success = COPY.taskAttemptResult("dao_debate", {
+    taskName: "道法论辩",
+    success: true,
+    conviction: 5,
+    exposure: 1,
+  });
+  assert.equal(success.title, "道法论辩 · 辩成");
+  assert.match(success.body, /立论 5，破绽 1/);
+  assert.match(success.body, /本周论道标记已记录/);
+
+  const failure = COPY.taskAttemptResult("dao_debate", {
+    taskName: "道法论辩",
+    success: false,
+    conviction: 2,
+    exposure: 3,
+    remainingDays: 4,
+  });
+  assert.equal(failure.title, "道法论辩 · 未稳");
+  assert.match(failure.body, /立论 2，破绽 3/);
+  assert.match(failure.body, /剩余 4 天，可再择时重试/);
 });
