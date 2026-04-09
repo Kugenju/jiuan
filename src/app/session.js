@@ -104,6 +104,10 @@ function createGameState(options) {
           result: null,
           refining: null,
           debate: null,
+          debatePresentation: {
+            stage: "idle",
+            revealTimerId: null,
+          },
         });
   const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(options);
 
@@ -246,6 +250,10 @@ function resetTaskStateForWeek(rootState, context) {
           result: null,
           refining: null,
           debate: null,
+          debatePresentation: {
+            stage: "idle",
+            revealTimerId: null,
+          },
         });
   const createRandomEventRuntimeState = resolveCreateRandomEventRuntimeState(context);
   const carryOverTasks = carryOverActiveTasksForNextWeek(rootState, context.totalDays);

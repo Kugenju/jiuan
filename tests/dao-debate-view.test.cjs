@@ -102,3 +102,29 @@ test("renderDaoDebateTaskPanelHtml escapes text content and data attributes", ()
   assert.match(html, /data-debate-card="card&quot; onclick=&quot;alert\(1\)"/);
   assert.doesNotMatch(html, /data-debate-card="card" onclick="alert\(1\)"/);
 });
+
+test("renderDaoDebateTaskPanelHtml can disable card controls during staged reveal", () => {
+  const windowObject = loadScripts(["data/ui.js", "src/app/dao-debate-view.js"]);
+  const { buildDaoDebateTaskPanelState, renderDaoDebateTaskPanelHtml } = windowObject.GAME_RUNTIME;
+  const taskText = windowObject.GAME_DATA.UI_TEXT.task;
+
+  const panelState = buildDaoDebateTaskPanelState({
+    activity: { name: "\u9053\u6cd5\u8bba\u8fa9", summary: "summary" },
+    task: { attemptCount: 1 },
+    session: {
+      roundIndex: 1,
+      maxRounds: 3,
+      conviction: 0,
+      exposure: 0,
+      currentPrompt: { title: "t", body: "b" },
+      hand: [{ id: "uphold_principle", label: "\u5b88\u5176\u672c\u4e49", tag: "principle" }],
+    },
+    taskText,
+    controlsDisabled: true,
+  });
+
+  const html = renderDaoDebateTaskPanelHtml(panelState);
+  assert.equal(panelState.controlsDisabled, true);
+  assert.match(html, /data-task-control="debate-card"/);
+  assert.match(html, /disabled/);
+});

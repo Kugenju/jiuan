@@ -133,6 +133,7 @@ const REFINING_STAGE_LAYOUT = {
     { x: 730, y: 374, width: 132, height: 82 },
   ],
 };
+const DAO_DEBATE_REPLY_REVEAL_MS = 420;
 
 const CANVAS_THEME = {
   backgroundTop: "#f3ead8",
@@ -522,6 +523,10 @@ function beginTaskActivityForSlot(rootState, activity, slotIndex, options = {}) 
       taskDef.id === "dao_debate" && typeof createDaoDebateSessionState === "function"
         ? createDaoDebateSessionState(taskDef, activeTask, rootState.rng)
         : null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   };
 
   return { ok: true, enteredTask: true };
@@ -535,6 +540,10 @@ function createEmptyTaskRuntimeState() {
     result: null,
     refining: null,
     debate: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   };
 }
 
@@ -598,6 +607,29 @@ function getActiveDaoDebateSession(rootState = state) {
   return debate && Array.isArray(debate.hand) ? debate : null;
 }
 
+function createDaoDebatePresentationState() {
+  return {
+    stage: "idle",
+    revealTimerId: null,
+  };
+}
+
+function getDaoDebatePresentationState(rootState = state) {
+  const runtime = getActiveTaskRuntime(rootState);
+  if (!runtime.debatePresentation || typeof runtime.debatePresentation !== "object") {
+    runtime.debatePresentation = createDaoDebatePresentationState();
+  }
+  return runtime.debatePresentation;
+}
+
+function clearDaoDebateRevealTimer(rootState = state) {
+  const presentation = getDaoDebatePresentationState(rootState);
+  if (presentation.revealTimerId) {
+    clearTimeout(presentation.revealTimerId);
+    presentation.revealTimerId = null;
+  }
+}
+
 function getActiveTaskActivity(rootState = state) {
   const runtime = getActiveTaskRuntime(rootState);
   return getActivity(runtime.mode) || getActivity(getActiveTaskDef(rootState)?.activityId) || null;
@@ -645,6 +677,10 @@ function getTaskStatusText(rootState = state) {
     if (!session) {
       return "论辩暂未就绪。";
     }
+    const presentation = getDaoDebatePresentationState(rootState);
+    if (presentation.stage === "player_only") {
+      return UI_TEXT.left?.daoDebatePendingReply || "妙哉偶正在应答……";
+    }
     return Array.isArray(session.hand) && session.hand.length
       ? "请选择一张论辩牌回应当前追问。"
       : "本轮论辩牌已出尽，等待结算。";
@@ -685,6 +721,7 @@ function getTaskFlowHintText(rootState = state) {
 }
 
 function resetTaskRuntimeForState(rootState = state) {
+  clearDaoDebateRevealTimer(rootState);
   rootState.taskRuntime = createEmptyTaskRuntimeState();
 }
 
@@ -1651,27 +1688,16 @@ function finishTaskAttempt(result) {
   return true;
 }
 
-function playDaoDebateCardFromUi(cardId) {
-  if (state.mode !== "task") {
-    return false;
-  }
+function resolveDaoDebateTaskAttemptAfterReveal(resolvedSession) {
   const task = getActiveTaskInstance(state);
   const taskDef = getActiveTaskDef(state);
-  const session = getActiveDaoDebateSession(state);
-  if (!task || !taskDef || !session || typeof playDaoDebateCard !== "function") {
+  const activity = getActiveTaskActivity(state);
+  if (!task || !taskDef || !resolvedSession?.result) {
     return false;
-  }
-
-  const nextSession = playDaoDebateCard(session, cardId, taskDef);
-  state.taskRuntime.debate = nextSession.result ? null : nextSession;
-
-  if (!nextSession.result) {
-    syncUi();
-    return true;
   }
 
   task.attemptCount = Number(task.attemptCount || 0) + 1;
-  if (nextSession.result.status === "success") {
+  if (resolvedSession.result.status === "success") {
     applyEffectBundle(taskDef.rewards);
     normalizeState();
     const summaryMark = taskDef.rewards?.summaryMark;
@@ -1683,14 +1709,18 @@ function playDaoDebateCardFromUi(cardId) {
   }
 
   const detail = RUNTIME_COPY.taskAttemptResult(taskDef.id, {
-    taskName: getActiveTaskActivity(state)?.name || UI_TEXT.task?.daoDebateTitle || "道法论辩",
-    success: nextSession.result.status === "success",
-    conviction: nextSession.result.conviction,
-    exposure: nextSession.result.exposure,
+    taskName: activity?.name || UI_TEXT.task?.daoDebateTitle || "道法论辩",
+    success: resolvedSession.result.status === "success",
+    conviction: resolvedSession.result.conviction,
+    exposure: resolvedSession.result.exposure,
     remainingDays: getTaskRemainingDays(state, task),
   });
 
-  pushTimeline(state.taskRuntime.pendingSlotIndex, getActiveTaskActivity(state), detail.body);
+  const slotIndex = Number.isInteger(state.taskRuntime?.pendingSlotIndex)
+    ? state.taskRuntime.pendingSlotIndex
+    : Math.min(state.resolvingFlow?.slotIndex || 0, SLOT_NAMES.length - 1);
+
+  pushTimeline(slotIndex, activity || { name: detail.title }, detail.body);
   addLog(detail.title, detail.body);
   state.tasks.lastStory = structuredClone(detail);
   resumeResolvingAfterTaskAttempt(state, detail, {
@@ -1698,6 +1728,51 @@ function playDaoDebateCardFromUi(cardId) {
     uiText: UI_TEXT,
     resetTaskRuntime: resetTaskRuntimeForState,
   });
+  syncUi();
+  return true;
+}
+
+function scheduleDaoDebateReplyReveal(resolvedSession) {
+  const presentation = getDaoDebatePresentationState(state);
+  clearDaoDebateRevealTimer(state);
+  presentation.revealTimerId = setTimeout(() => {
+    const runtime = getActiveTaskRuntime(state);
+    if (state.mode !== "task" || runtime.mode !== "dao_debate_task") {
+      return;
+    }
+    const nextPresentation = getDaoDebatePresentationState(state);
+    nextPresentation.revealTimerId = null;
+    nextPresentation.stage = "full";
+    if (resolvedSession?.result) {
+      resolveDaoDebateTaskAttemptAfterReveal(resolvedSession);
+      return;
+    }
+    syncUi();
+  }, DAO_DEBATE_REPLY_REVEAL_MS);
+}
+
+function playDaoDebateCardFromUi(cardId) {
+  if (state.mode !== "task") {
+    return false;
+  }
+  const taskDef = getActiveTaskDef(state);
+  const session = getActiveDaoDebateSession(state);
+  if (!taskDef || !session || typeof playDaoDebateCard !== "function") {
+    return false;
+  }
+
+  const presentation = getDaoDebatePresentationState(state);
+  if (presentation.stage === "player_only") {
+    return false;
+  }
+
+  const nextSession = playDaoDebateCard(session, cardId, taskDef);
+  if (nextSession === session) {
+    return false;
+  }
+  state.taskRuntime.debate = nextSession;
+  presentation.stage = "player_only";
+  scheduleDaoDebateReplyReveal(nextSession);
   syncUi();
   return true;
 }
@@ -2394,6 +2469,66 @@ function metric(label, value) {
   return `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`;
 }
 
+function escapeModalText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getDaoDebateHistoryRounds(rootState = state) {
+  const session = getActiveDaoDebateSession(rootState);
+  const history = Array.isArray(session?.history) ? session.history : [];
+  if (!history.length) {
+    return [];
+  }
+  const latest = session?.latestExchange;
+  if (!latest) {
+    return history.slice(0, Math.max(0, history.length - 1));
+  }
+  const latestIndex = history.findIndex(
+    (entry) => entry === latest || (entry.roundIndex === latest.roundIndex && entry.cardId === latest.cardId)
+  );
+  if (latestIndex < 0) {
+    return history.slice(0, Math.max(0, history.length - 1));
+  }
+  return history.slice(0, latestIndex);
+}
+
+function renderDaoDebateHistoryModalHtml(input = {}) {
+  const rounds = Array.isArray(input.rounds) ? input.rounds : [];
+  const roundsHtml = rounds.length
+    ? rounds
+        .map(
+          (entry, index) => `
+            <div class="modal-rule">
+              <strong>第 ${Number(entry.roundIndex || index + 1)} 轮</strong>
+              ${entry.cardLabel ? `<small>论点：${escapeModalText(entry.cardLabel)}</small>` : ""}
+              <small>${escapeModalText(UI_TEXT.left?.daoDebatePlayerLabel || "你的回应")}：${escapeModalText(entry.playerLine || "")}</small>
+              <small>${escapeModalText(UI_TEXT.left?.daoDebateReplyLabel || "妙哉偶回应")}：${escapeModalText(entry.replyLine || "")}</small>
+            </div>
+          `
+        )
+        .join("")
+    : `
+      <div class="modal-rule">
+        <small>${escapeModalText(UI_TEXT.left?.daoDebateHistoryEmpty || "当前还没有可回看的前几轮对话。")}</small>
+      </div>
+    `;
+
+  return `
+    <div class="panel-title">
+      <h2>${escapeModalText(input.title || "")}</h2>
+      <button class="drawer-close" id="info-close-btn" type="button">${escapeModalText(input.closeLabel || "")}</button>
+    </div>
+    <div class="modal-body">
+      ${roundsHtml}
+    </div>
+  `;
+}
+
 function toggleStatsPanel(force) {
   state.ui.statsOpen = typeof force === "boolean" ? force : !state.ui.statsOpen;
   if (state.ui.statsOpen) {
@@ -2486,6 +2621,15 @@ function renderInfoModal() {
       title: UI_TEXT.infoModal.timetableTitle,
       closeLabel: UI_TEXT.common.close,
       timetableHtml: renderWeeklyTimetable(),
+    });
+    infoModal.querySelector("#info-close-btn").addEventListener("click", closeInfoModal);
+    return;
+  }
+  if (kind === "dao-debate-history") {
+    infoModal.innerHTML = renderDaoDebateHistoryModalHtml({
+      title: UI_TEXT.infoModal?.daoDebateHistoryTitle || "道法论辩 · 前几轮",
+      closeLabel: UI_TEXT.common.close,
+      rounds: getDaoDebateHistoryRounds(state),
     });
     infoModal.querySelector("#info-close-btn").addEventListener("click", closeInfoModal);
     return;
@@ -3337,11 +3481,13 @@ function renderTaskPanel() {
   const taskDef = getActiveTaskDef(state);
   if (taskDef?.id === "dao_debate") {
     const session = getActiveDaoDebateSession(state);
+    const presentation = getDaoDebatePresentationState(state);
     const panelState = buildDaoDebateTaskPanelState({
       activity: getActiveTaskActivity(state),
       task,
       session,
       taskText,
+      controlsDisabled: presentation.stage === "player_only",
     });
     mainPanel.innerHTML = renderDaoDebateTaskPanelHtml(panelState);
     mainPanel.querySelectorAll("[data-debate-card]").forEach((button) => {
@@ -3719,8 +3865,12 @@ function renderLeftPanel() {
     const activityName = getTaskActivityName(state, taskDef);
     if (taskDef?.id === "dao_debate") {
       const session = getActiveDaoDebateSession(state);
+      const presentation = getDaoDebatePresentationState(state);
+      const latestExchange = session?.latestExchange || null;
       const promptTitle = session?.currentPrompt?.title || "当前追问";
       const promptBody = session?.currentPrompt?.body || "请继续回应妙哉偶的追问。";
+      const showReply = presentation.stage === "full" && Boolean(latestExchange?.replyLine);
+      const historyRounds = getDaoDebateHistoryRounds(state);
       leftPanel.innerHTML = `
         <div class="panel-title">
           <h2>${UI_TEXT.left.scheduleTitle}</h2>
@@ -3729,9 +3879,20 @@ function renderLeftPanel() {
         <div class="left-info-grid">
           <div class="left-info-card">
             <strong>${activityName}</strong>
-            <small>当前追问</small>
+            <small>${UI_TEXT.left?.daoDebatePromptLabel || "当前追问"}</small>
             <small>${promptTitle}</small>
             <small>${promptBody}</small>
+          </div>
+          <div class="left-info-card">
+            <strong>${UI_TEXT.left?.daoDebatePlayerLabel || "你的回应"}</strong>
+            <small>${latestExchange?.playerLine || UI_TEXT.left?.daoDebateNoExchangeHint || "请先择一论点回应。"}</small>
+            ${
+              showReply
+                ? `<small>${UI_TEXT.left?.daoDebateReplyLabel || "妙哉偶回应"}：${latestExchange.replyLine}</small>`
+                : latestExchange
+                  ? `<small>${UI_TEXT.left?.daoDebatePendingReply || "妙哉偶正在应答……"}</small>`
+                  : ""
+            }
           </div>
           <div class="left-info-card">
             <strong>论辩态势</strong>
@@ -3740,7 +3901,19 @@ function renderLeftPanel() {
             <small>${getTaskStatusText(state)}</small>
           </div>
         </div>
+        ${
+          historyRounds.length
+            ? `
+              <div class="action-row">
+                <button class="ghost-button" id="dao-debate-history-btn" type="button">${UI_TEXT.left?.daoDebateHistoryBtn || "查看前几轮"}</button>
+              </div>
+            `
+            : ""
+        }
       `;
+      leftPanel.querySelector("#dao-debate-history-btn")?.addEventListener("click", () =>
+        openInfoModal("dao-debate-history")
+      );
       return;
     }
     const activity = getActiveTaskActivity(state) || { name: activityName };

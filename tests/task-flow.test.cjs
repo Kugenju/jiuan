@@ -31,6 +31,10 @@ function realmSafe(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function createCanvasContextStub() {
   return new Proxy(
     {},
@@ -496,6 +500,10 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
         slots: ["card-1", "card-2", "card-3"],
       },
       debate: null,
+      debatePresentation: {
+        stage: "idle",
+        revealTimerId: null,
+      },
     },
     resolvingFlow: {
       phase: "result",
@@ -532,6 +540,10 @@ test("resumeResolvingAfterTaskAttempt returns task flow to resolving and advance
     result: null,
     refining: null,
     debate: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   });
   assert.deepEqual(realmSafe(rootState.resolvingFlow.storyTrail), [detail]);
   assert.equal(rootState.currentStory.title, "task result");
@@ -1088,10 +1100,11 @@ test("beginTaskActivityForSlot creates a dao debate runtime session", () => {
   assert.equal(state.mode, "task");
   assert.equal(state.taskRuntime.mode, "dao_debate_task");
   assert.equal(state.taskRuntime.debate.topicId, "topic_1");
+  assert.equal(state.taskRuntime.debatePresentation.stage, "idle");
   assert.equal(state.taskRuntime.refining, null);
 });
 
-test("playing the third dao debate card completes the task and resumes resolving flow", () => {
+test("playing the third dao debate card completes after staged reply reveal and resumes resolving flow", async () => {
   const { api } = loadMainTaskFlowHarness();
   const { playDaoDebateCardFromUi, state } = api;
 
@@ -1119,6 +1132,10 @@ test("playing the third dao debate card completes the task and resumes resolving
     mode: "dao_debate_task",
     result: null,
     refining: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
     debate: {
       topicId: "topic_1",
       roundIndex: 3,
@@ -1126,12 +1143,24 @@ test("playing the third dao debate card completes the task and resumes resolving
       conviction: 4,
       exposure: 0,
       currentPrompt: { followupType: "press_principle", body: "最后追问" },
-      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      hand: [
+        {
+          id: "uphold_principle",
+          label: "守其本义",
+          tag: "principle",
+          line: "这是我的最终回应。",
+        },
+      ],
       history: [],
     },
   };
 
   playDaoDebateCardFromUi("uphold_principle");
+
+  assert.equal(state.mode, "task");
+  assert.equal(state.taskRuntime.debatePresentation.stage, "player_only");
+
+  await wait(460);
 
   assert.equal(state.mode, "resolving");
   assert.equal(state.tasks.active[0].status, "completed");
@@ -1192,7 +1221,94 @@ test("dao debate task mode shared ui uses debate wording instead of refining wor
   assert.doesNotMatch(elements.get("#left-panel").innerHTML, /材料要求|未选中卡牌|炼器委托/);
 });
 
-test("playing the third dao debate card on failure keeps task active and records retry copy", () => {
+test("dao debate staged dialogue shows player first, then reply, and modal shows previous rounds", () => {
+  const { api, elements } = loadMainTaskFlowHarness();
+  const { state, syncUi } = api;
+
+  state.mode = "task";
+  state.day = 5;
+  state.currentStory = { title: "道法论辩", body: "应对追问", speaker: "妙哉偶" };
+  state.tasks = {
+    active: [
+      {
+        id: "week-1-dao_debate",
+        type: "dao_debate",
+        activityId: "dao_debate_task",
+        status: "active",
+        attemptCount: 1,
+        rewardClaimed: false,
+        expiresOnDay: 10,
+      },
+    ],
+    completedMarks: [],
+    lastStory: null,
+  };
+  state.taskRuntime = {
+    activeTaskId: "week-1-dao_debate",
+    pendingSlotIndex: 1,
+    mode: "dao_debate_task",
+    result: null,
+    refining: null,
+    debatePresentation: {
+      stage: "player_only",
+      revealTimerId: null,
+    },
+    debate: {
+      topicId: "topic_1",
+      roundIndex: 2,
+      maxRounds: 3,
+      conviction: 2,
+      exposure: 1,
+      currentPrompt: { title: "术可代德否", followupType: "press_principle", body: "继续回答" },
+      hand: [{ id: "uphold_principle", label: "守其本义", tag: "principle" }],
+      history: [
+        {
+          roundIndex: 1,
+          cardId: "weigh_outcomes",
+          cardLabel: "衡量得失",
+          playerLine: "第一轮我的回应",
+          replyLine: "第一轮妙哉偶回应",
+        },
+        {
+          roundIndex: 2,
+          cardId: "uphold_principle",
+          cardLabel: "守其本义",
+          playerLine: "第二轮我的回应",
+          replyLine: "第二轮妙哉偶回应",
+        },
+      ],
+      latestExchange: {
+        roundIndex: 2,
+        cardId: "uphold_principle",
+        cardLabel: "守其本义",
+        playerLine: "第二轮我的回应",
+        replyLine: "第二轮妙哉偶回应",
+      },
+    },
+  };
+
+  syncUi();
+  assert.match(elements.get("#left-panel").innerHTML, /你的回应/);
+  assert.match(elements.get("#left-panel").innerHTML, /第二轮我的回应/);
+  assert.match(elements.get("#left-panel").innerHTML, /妙哉偶正在应答/);
+  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /第二轮妙哉偶回应/);
+  assert.match(elements.get("#main-panel").innerHTML, /data-task-control="debate-card"/);
+  assert.match(elements.get("#main-panel").innerHTML, /disabled/);
+
+  state.taskRuntime.debatePresentation.stage = "full";
+  syncUi();
+  assert.match(elements.get("#left-panel").innerHTML, /妙哉偶回应：第二轮妙哉偶回应/);
+  assert.match(elements.get("#left-panel").innerHTML, /查看前几轮/);
+
+  state.ui.infoModal = "dao-debate-history";
+  syncUi();
+  assert.match(elements.get("#info-modal").innerHTML, /道法论辩 · 前几轮/);
+  assert.match(elements.get("#info-modal").innerHTML, /第 1 轮/);
+  assert.match(elements.get("#info-modal").innerHTML, /第一轮我的回应/);
+  assert.doesNotMatch(elements.get("#info-modal").innerHTML, /第二轮我的回应/);
+});
+
+test("playing the third dao debate card on failure waits for reply reveal then keeps task active", async () => {
   const { api } = loadMainTaskFlowHarness();
   const { playDaoDebateCardFromUi, state } = api;
 
@@ -1222,6 +1338,10 @@ test("playing the third dao debate card on failure keeps task active and records
     mode: "dao_debate_task",
     result: null,
     refining: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
     debate: {
       topicId: "topic_1",
       roundIndex: 3,
@@ -1235,6 +1355,11 @@ test("playing the third dao debate card on failure keeps task active and records
   };
 
   playDaoDebateCardFromUi("cite_classic");
+
+  assert.equal(state.mode, "task");
+  assert.equal(state.taskRuntime.debatePresentation.stage, "player_only");
+
+  await wait(460);
 
   assert.equal(state.mode, "resolving");
   assert.equal(state.tasks.active[0].status, "active");
@@ -1250,6 +1375,10 @@ test("playing the third dao debate card on failure keeps task active and records
     result: null,
     refining: null,
     debate: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   });
   assert.equal(state.resolvingFlow.phase, "result");
   assert.equal(state.resolvingFlow.slotIndex, 1);

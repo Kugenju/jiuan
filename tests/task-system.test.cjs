@@ -248,6 +248,10 @@ test("dao course lifecycle unlocks next-day debate task with hidden unlock flags
     result: null,
     refining: null,
     debate: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   });
 
   const firstUnlockResult = handleResolvedCourseTaskProgress(

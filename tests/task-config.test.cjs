@@ -93,6 +93,15 @@ test("artifact and dao debate task configs are exported with task activity metad
     "press_utility",
   ]);
   assert.equal(DAO_DEBATE_FOLLOWUPS.press_utility.id, "press_utility");
+  assert.equal(typeof DAO_DEBATE_CARDS.uphold_principle.line, "string");
+  assert.equal(typeof DAO_DEBATE_CARDS.weigh_outcomes.line, "string");
+  assert.equal(typeof DAO_DEBATE_CARDS.archive_case_note.line, "string");
+  assert.equal(typeof DAO_DEBATE_CARDS.counterexample_dossier.line, "string");
+  assert.match(DAO_DEBATE_CARDS.uphold_principle.line, /\S/u);
+  assert.equal(typeof DAO_DEBATE_FOLLOWUPS.press_principle.reply, "string");
+  assert.equal(typeof DAO_DEBATE_FOLLOWUPS.press_utility.reply, "string");
+  assert.equal(typeof DAO_DEBATE_FOLLOWUPS.press_authority.reply, "string");
+  assert.equal(typeof DAO_DEBATE_FOLLOWUPS.press_evasion.reply, "string");
 
   assert.equal(UI_TEXT.task.daoDebateTitle, "道法论辩");
   assert.equal(UI_TEXT.task.daoDebateRound(2, 3), "第 2 / 3 轮");

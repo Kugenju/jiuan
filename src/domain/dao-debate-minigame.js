@@ -123,7 +123,23 @@
       hand: drawDaoDebateHand(taskDef, taskInstance, rng),
       currentPrompt: getOpeningPrompt(topicId),
       history: [],
+      latestExchange: null,
       result: null,
+    };
+  }
+
+  function buildExchangeRecord(session, card, scoreType, followupType) {
+    const followup = window.GAME_DATA.DAO_DEBATE_FOLLOWUPS?.[followupType];
+    return {
+      roundIndex: session.roundIndex,
+      cardId: card.id,
+      cardLabel: card.label || "",
+      tag: card.tag,
+      playerLine: card.line || "",
+      replyLine: followup?.reply || "",
+      scoreType,
+      promptType: session.currentPrompt?.followupType || "opening",
+      nextFollowupType: followupType,
     };
   }
 
@@ -141,21 +157,16 @@
     const scoreType = scorePromptResponse(promptType, card.tag);
     const convictionDelta = scoreType === "strong" ? 2 : scoreType === "ok" ? 1 : 0;
     const exposureDelta = scoreType === "weak" ? 1 : 0;
+    const followupType = getFollowupTypeForTag(card.tag);
+    const exchange = buildExchangeRecord(session, card, scoreType, followupType);
 
     const nextSession = {
       ...session,
       hand: (session.hand || []).filter((entry) => entry.id !== cardId),
       conviction: session.conviction + convictionDelta,
       exposure: session.exposure + exposureDelta,
-      history: (session.history || []).concat([
-        {
-          roundIndex: session.roundIndex,
-          cardId: card.id,
-          tag: card.tag,
-          scoreType,
-          promptType,
-        },
-      ]),
+      history: (session.history || []).concat([exchange]),
+      latestExchange: exchange,
       roundIndex: session.roundIndex + 1,
     };
 
@@ -164,7 +175,6 @@
       return nextSession;
     }
 
-    const followupType = getFollowupTypeForTag(card.tag);
     nextSession.currentPrompt = {
       followupType,
       body: window.GAME_DATA.DAO_DEBATE_FOLLOWUPS?.[followupType]?.prompt || "",

@@ -38,6 +38,7 @@
         tagText: typeof taskText.daoDebateTag === "function" ? taskText.daoDebateTag(card.tag) : "",
       })),
       history: session.history || [],
+      controlsDisabled: Boolean(input?.controlsDisabled),
     };
   }
 
@@ -45,7 +46,7 @@
     const cardsHtml = (panelState?.cards || [])
       .map(
         (card) => `
-          <button class="activity-card" type="button" data-task-control="debate-card" data-debate-card="${escapeAttr(card.id)}">
+          <button class="activity-card" type="button" data-task-control="debate-card" data-debate-card="${escapeAttr(card.id)}" ${panelState?.controlsDisabled ? "disabled" : ""}>
             <strong>${escapeHtml(card.label || "")}</strong>
             ${card.tagText ? `<small>${escapeHtml(card.tagText)}</small>` : ""}
           </button>

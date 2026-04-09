@@ -47,6 +47,7 @@ test("createDaoDebateSessionState draws five cards and injects one unlocked hidd
   assert.equal(session.topicId, "topic_1");
   assert.equal(session.currentPrompt.followupType, "opening");
   assert.equal(session.hand.some((card) => card.id === "archive_case_note"), true);
+  assert.equal(session.latestExchange, null);
 });
 
 test("playDaoDebateCard updates conviction, exposure, and followup type from the played tag", () => {
@@ -74,7 +75,13 @@ test("playDaoDebateCard updates conviction, exposure, and followup type from the
     next.currentPrompt.body,
     "\u903c\u95ee\u540e\u679c\uff1a\u82e5\u771f\u6309\u6b64\u6cd5\u884c\u4e8b\uff0c\u4ee3\u4ef7\u7531\u8c01\u6765\u627f\u53d7\uff1f"
   );
+  assert.equal(typeof next.latestExchange.playerLine, "string");
+  assert.equal(typeof next.latestExchange.replyLine, "string");
+  assert.equal(next.latestExchange.cardId, "weigh_outcomes");
+  assert.equal(next.latestExchange.promptType, "opening");
   assert.equal(next.history[0].cardId, "weigh_outcomes");
+  assert.equal(next.history[0].playerLine, next.latestExchange.playerLine);
+  assert.equal(next.history[0].replyLine, next.latestExchange.replyLine);
 });
 
 test("playDaoDebateCard is a no-op for settled sessions", () => {

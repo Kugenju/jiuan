@@ -354,6 +354,10 @@ function createEmptyTaskRuntimeState() {
     result: null,
     refining: null,
     debate: null,
+    debatePresentation: {
+      stage: "idle",
+      revealTimerId: null,
+    },
   };
 }
 
