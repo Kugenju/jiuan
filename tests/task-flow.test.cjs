@@ -1294,7 +1294,7 @@ test("dao debate history modal keeps previous rounds while left panel stays summ
 
   state.taskRuntime.debatePresentation.stage = "full";
   syncUi();
-  assert.match(elements.get("#left-panel").innerHTML, /查看前几轮/);
+  assert.match(elements.get("#main-panel").innerHTML, /查看前几轮/);
   assert.doesNotMatch(elements.get("#left-panel").innerHTML, /第二轮我的回应|第二轮妙哉偶回应/);
 
   state.ui.infoModal = "dao-debate-history";

@@ -38,6 +38,8 @@
         tagText: typeof taskText.daoDebateTag === "function" ? taskText.daoDebateTag(card.tag) : "",
       })),
       history: session.history || [],
+      hasHistoryRounds: Boolean(input?.hasHistoryRounds),
+      historyButtonLabel: input?.historyButtonLabel || "",
       controlsDisabled: Boolean(input?.controlsDisabled),
     };
   }
@@ -53,6 +55,14 @@
         `
       )
       .join("");
+    const historyButtonHtml =
+      panelState?.hasHistoryRounds
+        ? `
+          <div class="action-row">
+            <button class="ghost-button" id="dao-debate-history-btn" type="button">${escapeHtml(panelState?.historyButtonLabel || "查看前几轮")}</button>
+          </div>
+        `
+        : "";
     return `
       <div class="planning-shell task-summary-shell dao-debate-shell">
         <div class="panel-title">
@@ -71,6 +81,7 @@
         <div class="activity-grid planning-activity-grid">
           ${cardsHtml}
         </div>
+        ${historyButtonHtml}
       </div>
     `;
   }

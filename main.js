@@ -2734,8 +2734,6 @@ function syncUi() {
   }
   document.body.classList.toggle("memory-mode", state.mode === "memory");
   document.body.classList.toggle("task-mode", state.mode === "task");
-  const isDaoDebateTaskMode = state.mode === "task" && getActiveTaskDef(state)?.id === "dao_debate";
-  document.body.classList.toggle("dao-debate-task-mode", isDaoDebateTaskMode);
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =
@@ -3504,17 +3502,23 @@ function renderTaskPanel() {
   if (taskDef?.id === "dao_debate") {
     const session = getActiveDaoDebateSession(state);
     const presentation = getDaoDebatePresentationState(state);
+    const historyRounds = getDaoDebateHistoryRounds(state);
     const panelState = buildDaoDebateTaskPanelState({
       activity: getActiveTaskActivity(state),
       task,
       session,
       taskText,
+      hasHistoryRounds: historyRounds.length > 0,
+      historyButtonLabel: UI_TEXT.left?.daoDebateHistoryBtn || "查看前几轮",
       controlsDisabled: presentation.stage === "player_only",
     });
     mainPanel.innerHTML = renderDaoDebateTaskPanelHtml(panelState);
     mainPanel.querySelectorAll("[data-debate-card]").forEach((button) => {
       button.addEventListener("click", () => playDaoDebateCardFromUi(button.dataset.debateCard));
     });
+    mainPanel.querySelector("#dao-debate-history-btn")?.addEventListener("click", () =>
+      openInfoModal("dao-debate-history")
+    );
     return;
   }
   const session = getActiveRefiningSession(state);
@@ -3889,7 +3893,6 @@ function renderLeftPanel() {
       const session = getActiveDaoDebateSession(state);
       const promptTitle = session?.currentPrompt?.title || "当前追问";
       const promptBody = session?.currentPrompt?.body || "请继续回应妙哉偶的追问。";
-      const historyRounds = getDaoDebateHistoryRounds(state);
       leftPanel.innerHTML = `
         <div class="panel-title">
           <h2>${UI_TEXT.left.scheduleTitle}</h2>
@@ -3909,19 +3912,7 @@ function renderLeftPanel() {
             <small>${getTaskStatusText(state)}</small>
           </div>
         </div>
-        ${
-          historyRounds.length
-            ? `
-              <div class="action-row">
-                <button class="ghost-button" id="dao-debate-history-btn" type="button">${UI_TEXT.left?.daoDebateHistoryBtn || "查看前几轮"}</button>
-              </div>
-            `
-            : ""
-        }
       `;
-      leftPanel.querySelector("#dao-debate-history-btn")?.addEventListener("click", () =>
-        openInfoModal("dao-debate-history")
-      );
       return;
     }
     const activity = getActiveTaskActivity(state) || { name: activityName };
