@@ -1221,7 +1221,7 @@ test("dao debate task mode shared ui uses debate wording instead of refining wor
   assert.doesNotMatch(elements.get("#left-panel").innerHTML, /材料要求|未选中卡牌|炼器委托/);
 });
 
-test("dao debate staged dialogue shows player first, then reply, and modal shows previous rounds", () => {
+test("dao debate history modal keeps previous rounds while left panel stays summary-only", () => {
   const { api, elements } = loadMainTaskFlowHarness();
   const { state, syncUi } = api;
 
@@ -1288,17 +1288,14 @@ test("dao debate staged dialogue shows player first, then reply, and modal shows
   };
 
   syncUi();
-  assert.match(elements.get("#left-panel").innerHTML, /你的回应/);
-  assert.match(elements.get("#left-panel").innerHTML, /第二轮我的回应/);
-  assert.match(elements.get("#left-panel").innerHTML, /妙哉偶正在应答/);
-  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /第二轮妙哉偶回应/);
+  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /你的回应|第二轮我的回应|妙哉偶正在应答|第二轮妙哉偶回应/);
   assert.match(elements.get("#main-panel").innerHTML, /data-task-control="debate-card"/);
   assert.match(elements.get("#main-panel").innerHTML, /disabled/);
 
   state.taskRuntime.debatePresentation.stage = "full";
   syncUi();
-  assert.match(elements.get("#left-panel").innerHTML, /妙哉偶回应：第二轮妙哉偶回应/);
   assert.match(elements.get("#left-panel").innerHTML, /查看前几轮/);
+  assert.doesNotMatch(elements.get("#left-panel").innerHTML, /第二轮我的回应|第二轮妙哉偶回应/);
 
   state.ui.infoModal = "dao-debate-history";
   syncUi();

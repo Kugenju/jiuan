@@ -679,7 +679,7 @@ function getTaskStatusText(rootState = state) {
     }
     const presentation = getDaoDebatePresentationState(rootState);
     if (presentation.stage === "player_only") {
-      return UI_TEXT.left?.daoDebatePendingReply || "妙哉偶正在应答……";
+      return "本轮结算中，请稍候。";
     }
     return Array.isArray(session.hand) && session.hand.length
       ? "请选择一张论辩牌回应当前追问。"
@@ -1997,6 +1997,14 @@ function drawTaskScene() {
   const activityName = getTaskActivityName(state, taskDef);
   if (taskDef?.id === "dao_debate") {
     const session = getActiveDaoDebateSession(state);
+    const presentation = getDaoDebatePresentationState(state);
+    const latestExchange = session?.latestExchange || null;
+    const playerLine = latestExchange?.playerLine || UI_TEXT.left?.daoDebateNoExchangeHint || "请先择一论点回应。";
+    const replyLine = !latestExchange
+      ? ""
+      : presentation.stage === "full"
+        ? latestExchange.replyLine || ""
+        : UI_TEXT.left?.daoDebatePendingReply || "妙哉偶正在应答……";
     drawAcademyBackdrop("#efe6d8", "#d7c2a7");
     drawBanner(
       UI_TEXT.canvas.taskTitle(state.day, activityName),
@@ -2010,8 +2018,20 @@ function drawTaskScene() {
     ctx.fillStyle = CANVAS_THEME.panelText;
     ctx.fillText(session?.currentPrompt?.title || "术可代德否", 112, 228);
     wrapText(session?.currentPrompt?.body || "", 112, 270, 736, 30, CANVAS_THEME.panelMuted);
-    ctx.fillText(`立论 ${session?.conviction || 0}`, 112, 420);
-    ctx.fillText(`破绽 ${session?.exposure || 0}`, 252, 420);
+    ctx.font = "18px 'Microsoft YaHei'";
+    ctx.fillText(`立论 ${session?.conviction || 0}`, 672, 228);
+    ctx.fillText(`破绽 ${session?.exposure || 0}`, 782, 228);
+    ctx.strokeStyle = CANVAS_THEME.panelStroke;
+    ctx.beginPath();
+    ctx.moveTo(112, 338);
+    ctx.lineTo(848, 338);
+    ctx.stroke();
+    ctx.font = "18px 'Microsoft YaHei'";
+    ctx.fillStyle = CANVAS_THEME.panelText;
+    ctx.fillText(UI_TEXT.left?.daoDebatePlayerLabel || "你的回应", 112, 368);
+    ctx.fillText(UI_TEXT.left?.daoDebateReplyLabel || "妙哉偶回应", 512, 368);
+    wrapText(playerLine, 112, 398, 340, 24, CANVAS_THEME.panelText);
+    wrapText(replyLine, 512, 398, 340, 24, CANVAS_THEME.panelMuted);
     return;
   }
   const attempt = getActiveRefiningAttempt(state);
@@ -3867,11 +3887,8 @@ function renderLeftPanel() {
     const activityName = getTaskActivityName(state, taskDef);
     if (taskDef?.id === "dao_debate") {
       const session = getActiveDaoDebateSession(state);
-      const presentation = getDaoDebatePresentationState(state);
-      const latestExchange = session?.latestExchange || null;
       const promptTitle = session?.currentPrompt?.title || "当前追问";
       const promptBody = session?.currentPrompt?.body || "请继续回应妙哉偶的追问。";
-      const showReply = presentation.stage === "full" && Boolean(latestExchange?.replyLine);
       const historyRounds = getDaoDebateHistoryRounds(state);
       leftPanel.innerHTML = `
         <div class="panel-title">
@@ -3884,17 +3901,6 @@ function renderLeftPanel() {
             <small>${UI_TEXT.left?.daoDebatePromptLabel || "当前追问"}</small>
             <small>${promptTitle}</small>
             <small>${promptBody}</small>
-          </div>
-          <div class="left-info-card">
-            <strong>${UI_TEXT.left?.daoDebatePlayerLabel || "你的回应"}</strong>
-            <small>${latestExchange?.playerLine || UI_TEXT.left?.daoDebateNoExchangeHint || "请先择一论点回应。"}</small>
-            ${
-              showReply
-                ? `<small>${UI_TEXT.left?.daoDebateReplyLabel || "妙哉偶回应"}：${latestExchange.replyLine}</small>`
-                : latestExchange
-                  ? `<small>${UI_TEXT.left?.daoDebatePendingReply || "妙哉偶正在应答……"}</small>`
-                  : ""
-            }
           </div>
           <div class="left-info-card">
             <strong>论辩态势</strong>
