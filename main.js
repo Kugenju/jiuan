@@ -2714,6 +2714,8 @@ function syncUi() {
   }
   document.body.classList.toggle("memory-mode", state.mode === "memory");
   document.body.classList.toggle("task-mode", state.mode === "task");
+  const isDaoDebateTaskMode = state.mode === "task" && getActiveTaskDef(state)?.id === "dao_debate";
+  document.body.classList.toggle("dao-debate-task-mode", isDaoDebateTaskMode);
   memoryStage.classList.toggle("hidden", state.mode !== "memory");
   canvas.classList.toggle("hidden", state.mode === "memory");
   statusLine.textContent =

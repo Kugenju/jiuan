@@ -84,6 +84,10 @@ body.task-mode .stage-panel {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+body.task-mode.dao-debate-task-mode .stage-panel {
+  grid-template-rows: auto minmax(0, 1fr) clamp(176px, 27vh, 248px);
+}
+
 #left-panel {
   min-height: 0;
   height: 100%;
@@ -93,6 +97,10 @@ body.task-mode .stage-panel {
 
 body.task-mode #left-panel {
   display: none;
+}
+
+body.task-mode.dao-debate-task-mode #left-panel {
+  display: block;
 }
 
 body.task-mode #game-canvas {

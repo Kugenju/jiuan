@@ -243,6 +243,14 @@ test("task mode hides lower left panel and gives canvas more space", () => {
   assert.match(canvasTaskBlock, /aspect-ratio:\s*16\s*\/\s*9;/);
 });
 
+test("dao debate task mode re-enables left panel for staged dialogue feedback", () => {
+  const debateStagePanelBlock = getBlock(escapeRegExp("body.task-mode.dao-debate-task-mode .stage-panel"));
+  assert.match(debateStagePanelBlock, /grid-template-rows:\s*auto minmax\(0,\s*1fr\) clamp\(176px,\s*27vh,\s*248px\);/);
+
+  const debateLeftPanelBlock = getBlock(escapeRegExp("body.task-mode.dao-debate-task-mode #left-panel"));
+  assert.match(debateLeftPanelBlock, /display:\s*block;/);
+});
+
 test("mobile views reinforce contours on key cards with the classical scheme", () => {
   const mediaMarker = "@media (max-width: 720px)";
   const markerIndex = styles.indexOf(mediaMarker);
